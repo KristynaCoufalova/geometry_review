@@ -3,10 +3,11 @@
 // app/page.tsx
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { BookOpen, Wrench } from 'lucide-react'
+import { BookOpen, Wrench, Target, List, Settings } from 'lucide-react'
+import Navigation from './components/Navigation'
 
 const GeometryConstructionTester = dynamic(
-  () => import('@/components/GeometryConstructionTester'),
+  () => import('./components/GeometryConstructionTester'),
   { 
     ssr: false,
     loading: () => (
@@ -29,21 +30,36 @@ const GeometryConstructionTester = dynamic(
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-      <div className="max-w-4xl w-full">
-        {/* Navigation */}
-        <div className="bg-white rounded-lg shadow-lg p-8">
+    <div className="min-h-screen bg-gray-50">
+      <Navigation />
+      <main className="flex flex-col items-center justify-center p-6">
+        <div className="max-w-4xl w-full">
+          {/* Navigation */}
+          <div className="bg-white rounded-lg shadow-lg p-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-8 text-center">
             Geometrické testování
           </h1>
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <Link 
+              href="/questions" 
+              className="p-6 border-2 border-purple-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-all duration-200 group"
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <List className="text-purple-600 group-hover:text-purple-700" size={24} />
+                <h2 className="text-xl font-semibold text-gray-800">Databáze úloh</h2>
+              </div>
+              <p className="text-gray-600">
+                Vyberte si z databáze geometrických úloh připojené k Supabase
+              </p>
+            </Link>
+
             <Link 
               href="/geometry" 
               className="p-6 border-2 border-blue-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 group"
             >
               <div className="flex items-center gap-3 mb-3">
                 <BookOpen className="text-blue-600 group-hover:text-blue-700" size={24} />
-                <h2 className="text-xl font-semibold text-gray-800">Konkrétní úloha</h2>
+                <h2 className="text-xl font-semibold text-gray-800">Ukázková úloha</h2>
               </div>
               <p className="text-gray-600">
                 Testování s konkrétní geometrickou úlohou - konstrukce rovnoramenného trojúhelníku
@@ -62,9 +78,23 @@ export default function HomePage() {
                 Volné testovací pole pro geometrické konstrukce bez specifických požadavků
               </p>
             </Link>
+
+            <Link 
+              href="/admin" 
+              className="p-6 border-2 border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 group"
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <Settings className="text-gray-600 group-hover:text-gray-700" size={24} />
+                <h2 className="text-xl font-semibold text-gray-800">Správa</h2>
+              </div>
+              <p className="text-gray-600">
+                Správa databáze a přidávání nových úloh
+              </p>
+            </Link>
           </div>
         </div>
       </div>
-    </main>
+      </main>
+    </div>
   )
 }

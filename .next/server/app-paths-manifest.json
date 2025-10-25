@@ -1,4 +1,11 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
+  "/admin/page": "app/admin/page.js",
   "/general-testing/page": "app/general-testing/page.js",
-  "/page": "app/page.js"
+  "/geometry/page": "app/geometry/page.js",
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/questions/[id]/page": "app/questions/[id]/page.js",
+  "/questions/page": "app/questions/page.js",
+  "/signup/page": "app/signup/page.js"
 }

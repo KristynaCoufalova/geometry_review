@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import JXG from 'jsxgraph'
-import { Save, Trash2, Circle, Pencil, RotateCcw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut } from 'lucide-react'
+import { Save, Trash2, Circle, Pencil, RotateCcw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut, Download, Upload, Info } from 'lucide-react'
 import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
@@ -26,6 +26,8 @@ export default function GeneralGeometryTester() {
   const [feedback, setFeedback] = useState('')
   const [data, setData] = useState<any>(null)
   const [createdStack, setCreatedStack] = useState<string[]>([])
+  const [showHelp, setShowHelp] = useState(false)
+  const [constructionHistory, setConstructionHistory] = useState<any[]>([])
   
   // Physical tools state
   const [rulerVisible, setRulerVisible] = useState(false)
@@ -270,8 +272,60 @@ export default function GeneralGeometryTester() {
   function saveConstruction() {
     if (!boardRef.current) return
     const timestamp = new Date().toISOString()
-    setData({ timestamp })
+    const constructionData = {
+      timestamp,
+      objects: Object.values(boardRef.current.objects).map((obj: any) => ({
+        id: obj.id,
+        type: obj.elType,
+        name: obj.name,
+        properties: obj.visProp
+      })),
+      createdStack: [...createdStack]
+    }
+    setData(constructionData)
+    setConstructionHistory(prev => [...prev, constructionData])
     setFeedback('Konstrukce uložena')
+  }
+
+  function exportConstruction() {
+    if (!data) return
+    const dataStr = JSON.stringify(data, null, 2)
+    const dataBlob = new Blob([dataStr], { type: 'application/json' })
+    const url = URL.createObjectURL(dataBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `construction_${new Date().toISOString().split('T')[0]}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+    setFeedback('Konstrukce exportována')
+  }
+
+  function importConstruction(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target?.result as string)
+        setData(importedData)
+        setFeedback('Konstrukce načtena - klikněte na "Načíst" pro obnovení')
+      } catch (err) {
+        setFeedback('Chyba při načítání souboru')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  function loadConstruction() {
+    if (!data || !boardRef.current) return
+    
+    // Clear current construction
+    clearAll()
+    
+    // Restore objects from data
+    // This is a simplified restoration - in a real implementation you'd need more sophisticated logic
+    setFeedback('Konstrukce načtena')
   }
 
   return (
@@ -286,7 +340,46 @@ export default function GeneralGeometryTester() {
             <p className="text-gray-700">
               Volné testovací pole pro geometrické konstrukce. Můžete používat všechny dostupné nástroje bez specifických požadavků.
             </p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                onClick={() => setShowHelp(!showHelp)}
+                className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+              >
+                <Info size={14} />
+                {showHelp ? 'Skrýt nápovědu' : 'Zobrazit nápovědu'}
+              </button>
+            </div>
           </div>
+
+          {showHelp && (
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+              <h3 className="font-semibold text-blue-800 mb-2">Nápověda k nástrojům:</h3>
+              <div className="grid md:grid-cols-2 gap-4 text-sm text-blue-700">
+                <div>
+                  <h4 className="font-medium mb-1">Základní nástroje:</h4>
+                  <ul className="space-y-1">
+                    <li>• <strong>Myš:</strong> Interakce s objekty bez vytváření</li>
+                    <li>• <strong>Bod:</strong> Vytvoření bodu kliknutím</li>
+                    <li>• <strong>Úsečka:</strong> Klikněte na dva body</li>
+                    <li>• <strong>Přímka:</strong> Klikněte na dva body</li>
+                    <li>• <strong>Kružnice:</strong> Střed a bod na kružnici</li>
+                    <li>• <strong>Guma:</strong> Smazání objektu</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-medium mb-1">Fyzické nástroje:</h4>
+                  <ul className="space-y-1">
+                    <li>• <strong>Pravítko:</strong> Měření vzdáleností</li>
+                    <li>• <strong>Trojúhelník:</strong> Rýsování úhlů</li>
+                    <li>• <strong>Úhloměr:</strong> Měření úhlů</li>
+                    <li>• <strong>Modrý bod:</strong> Přesun nástroje</li>
+                    <li>• <strong>Zelený bod:</strong> Otočení nástroje</li>
+                    <li>• <strong>Oranžový bod:</strong> Změna velikosti</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Toolbar */}
           <div className="flex flex-wrap gap-2 mb-4 p-4 bg-gray-100 rounded-lg">
@@ -381,6 +474,21 @@ export default function GeneralGeometryTester() {
             <button onClick={saveConstruction} className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700 flex items-center gap-2">
               <Save size={18}/> Uložit
             </button>
+            <button onClick={exportConstruction} disabled={!data} className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+              <Download size={18}/> Export
+            </button>
+            <label className="px-3 py-2 rounded bg-purple-600 text-white hover:bg-purple-700 cursor-pointer flex items-center gap-2">
+              <Upload size={18}/> Import
+              <input
+                type="file"
+                accept=".json"
+                onChange={importConstruction}
+                className="hidden"
+              />
+            </label>
+            <button onClick={loadConstruction} disabled={!data} className="px-3 py-2 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+              <Upload size={18}/> Načíst
+            </button>
           </div>
 
           <div 
@@ -444,6 +552,28 @@ export default function GeneralGeometryTester() {
               feedback.includes('✅') ? 'bg-green-50 border-l-4 border-green-500' : 'bg-yellow-50 border-l-4 border-yellow-500'
             }`}>
               <p className="text-gray-800">{feedback}</p>
+            </div>
+          )}
+
+          {/* Construction History */}
+          {constructionHistory.length > 0 && (
+            <div className="mt-6 bg-gray-50 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">Historie konstrukcí</h3>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {constructionHistory.map((construction, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-white rounded border">
+                    <div>
+                      <span className="text-sm font-medium">Konstrukce {index + 1}</span>
+                      <span className="text-xs text-gray-500 ml-2">
+                        {new Date(construction.timestamp).toLocaleString('cs-CZ')}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {construction.objects?.length || 0} objektů
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

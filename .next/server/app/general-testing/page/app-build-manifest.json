@@ -1,0 +1,35 @@
+{
+  "pages": {
+    "/general-testing/page": [
+      "static/chunks/[root-of-the-server]__8fe2a2ff._.css",
+      "static/chunks/c0305_next_dist_f7cd3b3a._.js",
+      "static/chunks/Documents_geometry_review_app_layout_tsx_ab7bb41d._.js",
+      "static/chunks/c0305_next_dist_client_components_builtin_global-error_3583d824.js",
+      "static/chunks/Documents_geometry_review_app_bd715546._.js",
+      "static/chunks/c0305_jsxgraph_src_base_coordselement_e728303b.js",
+      "static/chunks/c0305_jsxgraph_src_base_board_3302944f.js",
+      "static/chunks/c0305_jsxgraph_src_base_line_46772c0f.js",
+      "static/chunks/c0305_jsxgraph_src_base_curve_12b916ab.js",
+      "static/chunks/c0305_jsxgraph_src_base_c72a1ea5._.js",
+      "static/chunks/c0305_jsxgraph_src_math_a10cfb61._.js",
+      "static/chunks/c0305_jsxgraph_src_utils_7636bcc8._.js",
+      "static/chunks/c0305_jsxgraph_src_options_e574ca72.js",
+      "static/chunks/c0305_jsxgraph_src_renderer_a2e187ed._.js",
+      "static/chunks/c0305_jsxgraph_src_parser_7e9633db._.js",
+      "static/chunks/c0305_jsxgraph_src_element_2757da74._.js",
+      "static/chunks/c0305_jsxgraph_src_3d_993ddeaa._.js",
+      "static/chunks/c0305_jsxgraph_src_4db65172._.js",
+      "static/chunks/c0305_75ded5c7._.js",
+      "static/chunks/Documents_geometry_review_app_general-testing_page_tsx_3583d824._.js",
+      "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_9a02bfa7._.js",
+      "static/chunks/c0305_next_dist_compiled_react-dom_d2fcd4be._.js",
+      "static/chunks/c0305_next_dist_compiled_next-devtools_index_43c850e8.js",
+      "static/chunks/c0305_next_dist_compiled_9c34fd5b._.js",
+      "static/chunks/c0305_next_dist_client_13280505._.js",
+      "static/chunks/c0305_next_dist_6f3f9413._.js",
+      "static/chunks/c0305_@swc_helpers_cjs_e7a6db02._.js",
+      "static/chunks/Documents_geometry_review_a0ff3932._.js",
+      "static/chunks/turbopack-Documents_geometry_review_c77f08c1._.js"
+    ]
+  }
+}

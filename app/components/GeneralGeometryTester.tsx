@@ -258,6 +258,7 @@ export default function GeneralGeometryTester() {
     setRulerVisible(!rulerVisible)
     if (!rulerVisible) {
       setActiveTool('ruler')
+      setTool('mouse') // Automatically switch to mouse mode when activating ruler
     } else if (activeTool === 'ruler') {
       setActiveTool(null)
     }
@@ -267,6 +268,7 @@ export default function GeneralGeometryTester() {
     setTriangleVisible(!triangleVisible)
     if (!triangleVisible) {
       setActiveTool('triangle')
+      setTool('mouse') // Automatically switch to mouse mode when activating triangle
     } else if (activeTool === 'triangle') {
       setActiveTool(null)
     }
@@ -276,6 +278,7 @@ export default function GeneralGeometryTester() {
     setProtractorVisible(!protractorVisible)
     if (!protractorVisible) {
       setActiveTool('protractor')
+      setTool('mouse') // Automatically switch to mouse mode when activating protractor
     } else if (activeTool === 'protractor') {
       setActiveTool(null)
     }
@@ -681,7 +684,10 @@ export default function GeneralGeometryTester() {
                 length={rulerPosition.length}
                 onPositionChange={handleRulerPositionChange}
                 isActive={activeTool === 'ruler'}
-                onActivate={() => setActiveTool('ruler')}
+                onActivate={() => {
+                  setActiveTool('ruler')
+                  setTool('mouse') // Automatically switch to mouse mode when clicking ruler
+                }}
                 onUiBusyChange={setUiBusy}
               />
             )}
@@ -696,7 +702,10 @@ export default function GeneralGeometryTester() {
                 type="45-45-90"
                 onPositionChange={handleTrianglePositionChange}
                 isActive={activeTool === 'triangle'}
-                onActivate={() => setActiveTool('triangle')}
+                onActivate={() => {
+                  setActiveTool('triangle')
+                  setTool('mouse') // Automatically switch to mouse mode when clicking triangle
+                }}
                 onUiBusyChange={setUiBusy}
               />
             )}
@@ -710,7 +719,10 @@ export default function GeneralGeometryTester() {
                 size={protractorPosition.size}
                 onPositionChange={handleProtractorPositionChange}
                 isActive={activeTool === 'protractor'}
-                onActivate={() => setActiveTool('protractor')}
+                onActivate={() => {
+                  setActiveTool('protractor')
+                  setTool('mouse') // Automatically switch to mouse mode when clicking protractor
+                }}
                 onUiBusyChange={setUiBusy}
               />
             )}

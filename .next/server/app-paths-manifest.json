@@ -1,5 +1,8 @@
 {
   "/general-testing/page": "app/general-testing/page.js",
   "/geometry/page": "app/geometry/page.js",
-  "/page": "app/page.js"
+  "/login/page": "app/login/page.js",
+  "/page": "app/page.js",
+  "/questions/[id]/page": "app/questions/[id]/page.js",
+  "/questions/page": "app/questions/page.js"
 }

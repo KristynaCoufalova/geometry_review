@@ -38,15 +38,21 @@ export default function GeneralGeometryTester() {
   const [protractorPosition, setProtractorPosition] = useState({ x: 6, y: 3, rotation: 0, size: 3 })
   const [activeTool, setActiveTool] = useState<'ruler' | 'triangle' | 'protractor' | null>(null)
   const [uiBusy, setUiBusy] = useState(false)
+  
+  // Point naming state
+  const [renameMode, setRenameMode] = useState(false)
+  const [selectedPointId, setSelectedPointId] = useState<string|null>(null)
 
   const toolRef = useRef(tool)
   const selectedRef = useRef(selected)
   const uiBusyRef = useRef(uiBusy)
+  const renameModeRef = useRef(renameMode)
   const handleClickRef = useRef<((brd: JBoard, e: any) => void) | null>(null)
   
   useEffect(() => { toolRef.current = tool }, [tool])
   useEffect(() => { selectedRef.current = selected }, [selected])
   useEffect(() => { uiBusyRef.current = uiBusy }, [uiBusy])
+  useEffect(() => { renameModeRef.current = renameMode }, [renameMode])
 
   function pushCreated(obj: any) {
     if (obj?.id) setCreatedStack(s => [...s, obj.id])
@@ -55,6 +61,37 @@ export default function GeneralGeometryTester() {
   function getMouseCoords(brd: JBoard, e: any): {x: number, y: number} {
     const coords = brd.getUsrCoordsOfMouse(e)
     return { x: coords[0], y: coords[1] }
+  }
+
+  // 'A_12' -> 'A₁₂'
+  function toSubscript(name: string) {
+    const map: Record<string,string> = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉' }
+    return name.replace(/_(\d+)/g, (_, d) => d.split('').map((ch: string) => map[ch] ?? ch).join(''))
+  }
+
+  // normalize and set the visible + raw name on a JSXGraph point
+  const renamePoint = useCallback((pt:any, newName:string) => {
+    const trimmed = (newName || '').trim()
+    const pretty = toSubscript(trimmed)                 // converts A_1 -> A₁
+    pt.setAttribute({ name: pretty, withLabel: !!trimmed })
+    ;(pt as any)._rawName = trimmed                      // keep searchable original
+    pt.board.update()
+  }, [])
+
+  // find a point under event (prefers non-fixed)
+  function pointUnder(brd:JBoard, e:any) {
+    const under = brd.getAllObjectsUnderMouse(e)
+    return under.find((o:any)=>o.elType==='point') || null
+  }
+
+  function isNameTaken(brd:JBoard, raw:string, exceptId?:string) {
+    for (const k in brd.objects) {
+      const o:any = (brd.objects as any)[k]
+      if (o.elType === 'point' && o.id !== exceptId) {
+        if ((o._rawName ?? '') === raw) return true
+      }
+    }
+    return false
   }
 
   function nearestFreePoint(brd: JBoard, e: any) {
@@ -67,6 +104,7 @@ export default function GeneralGeometryTester() {
     const pt = brd.create('point', [xy.x, xy.y], {
       name: '', size: 2, strokeColor: '#444', fillColor: '#666'
     })
+    ;(pt as any)._rawName = ''
     pushCreated(pt)
     return pt
   }, [])
@@ -86,12 +124,29 @@ export default function GeneralGeometryTester() {
     switch (currentTool) {
       case 'mouse': {
         // Mouse tool - do nothing, just allow interaction without creating objects
-        setFeedback('')
+        // Check if clicking on a point and prevent default behavior
+        const under = brd.getAllObjectsUnderMouse(e)
+        const clickedPoint = under.find((o:any) => o.elType === 'point' && !o.visProp.fixed)
+        if (clickedPoint) {
+          // Prevent default JSXGraph behavior for points when using mouse tool
+          if (e.originalEvent) {
+            e.originalEvent.preventDefault()
+            e.originalEvent.stopPropagation()
+          }
+          setFeedback('Bod vybrán')
+        } else {
+          setFeedback('')
+        }
         break
       }
       case 'point': {
-        createPointSmart(brd, xy)
+        const alt = !!e?.originalEvent?.altKey
+        const p = createPointSmart(brd, xy)
         setFeedback('Bod vytvořen')
+        if (alt) {
+          const proposed = window.prompt('Název bodu (nepovinné):', '') ?? ''
+          renamePoint(p, proposed)
+        }
         break
       }
       case 'segment': {
@@ -164,9 +219,21 @@ export default function GeneralGeometryTester() {
         break
       }
     }
-  }, [createPointSmart])
+  }, [createPointSmart, renamePoint])
 
   useEffect(() => { handleClickRef.current = handleClick }, [handleClick])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if ((e.key === 'n' || e.key === 'N') && !uiBusyRef.current) {
+        setRenameMode(v => !v)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [])
 
   // Handle ruler position changes
   const handleRulerPositionChange = (x: number, y: number, rotation: number, length: number) => {
@@ -226,14 +293,6 @@ export default function GeneralGeometryTester() {
     
     boardRef.current = brd
 
-    const downHandler = (e: any) => {
-      if (handleClickRef.current) {
-        handleClickRef.current(brd, e)
-      }
-    }
-
-    brd.on('down', downHandler)
-
     return () => {
       try { 
         JXG.JSXGraph.freeBoard(brd) 
@@ -241,6 +300,56 @@ export default function GeneralGeometryTester() {
       boardRef.current = null
     }
   }, []) // Only initialize once
+
+  // Update event handlers when rename mode changes
+  useEffect(() => {
+    const brd = boardRef.current
+    if (!brd) return
+
+    // Remove old handlers
+    brd.off('down')
+    brd.off('dblclick')
+
+    // Add new handlers with current rename mode
+    const dblHandler = (e:any) => {
+      if (uiBusyRef.current) return
+      const pt = pointUnder(brd, e)
+      if (!pt) return
+      const currentRaw = (pt as any)._rawName || ''
+      let proposed = (window.prompt('Název bodu (např. A, B, C, A_1, A_2):', currentRaw) ?? '').trim()
+      if (proposed && isNameTaken(brd, proposed, (pt as any).id)) {
+        // append a number if taken
+        let i = 2
+        while (isNameTaken(brd, `${proposed}_${i}`, (pt as any).id)) i++
+        proposed = `${proposed}_${i}`
+      }
+      renamePoint(pt, proposed)
+    }
+
+    const downHandler = (e:any) => {
+      if (handleClickRef.current && !renameModeRef.current) {
+        handleClickRef.current(brd, e)
+        return
+      }
+      if (uiBusyRef.current) return
+      if (renameModeRef.current) {
+        const pt = pointUnder(brd, e)
+        if (!pt) return
+        const currentRaw = (pt as any)._rawName || ''
+        let proposed = (window.prompt('Název bodu (např. A, B, C, A_1, A_2):', currentRaw) ?? '').trim()
+        if (proposed && isNameTaken(brd, proposed, (pt as any).id)) {
+          // append a number if taken
+          let i = 2
+          while (isNameTaken(brd, `${proposed}_${i}`, (pt as any).id)) i++
+          proposed = `${proposed}_${i}`
+        }
+        renamePoint(pt, proposed)
+      }
+    }
+
+    brd.on('down', downHandler)
+    brd.on('dblclick', dblHandler)
+  }, [renameMode, renamePoint])
 
   function undoLast() {
     const brd = boardRef.current
@@ -434,6 +543,15 @@ export default function GeneralGeometryTester() {
               }`}
             >
               <Eraser size={18}/> Guma
+            </button>
+            <button 
+              onClick={() => setRenameMode(v => !v)}
+              className={`px-3 py-2 rounded flex items-center gap-2 ${
+                renameMode ? 'bg-teal-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
+              }`}
+              title="Přejmenovat bod (klikněte na bod)"
+            >
+              ✎ Název bodu
             </button>
             
             <div className="border-l-2 border-gray-300 mx-2"></div>

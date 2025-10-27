@@ -50,9 +50,9 @@ __turbopack_context__.s([
 ]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$supabase$2f$supabase$2d$js$2f$dist$2f$module$2f$index$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$locals$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/@supabase/supabase-js/dist/module/index.js [app-ssr] (ecmascript) <locals>");
 ;
-const supabaseUrl = ("TURBOPACK compile-time value", "https://wfhujqgtxvxqcexcgokl.supabase.co");
-const supabaseAnonKey = ("TURBOPACK compile-time value", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmaHVqcWd0eHZ4cWNleGNnb2tsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyMjE0ODEsImV4cCI6MjA3Njc5NzQ4MX0.wo7QAd_0_q9EpXa96eQjZB36R1z1rRoVTyXXLwpFa-A");
-const supabase = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$supabase$2f$supabase$2d$js$2f$dist$2f$module$2f$index$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$locals$3e$__["createClient"])(supabaseUrl, supabaseAnonKey);
+const supabaseUrl = ("TURBOPACK compile-time value", "https://wfhujqgtxvxqcexcgokl.supabase.co") || 'https://placeholder.supabase.co';
+const supabaseAnonKey = ("TURBOPACK compile-time value", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmaHVqcWd0eHZ4cWNleGNnb2tsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEyMjE0ODEsImV4cCI6MjA3Njc5NzQ4MX0.wo7QAd_0_q9EpXa96eQjZB36R1z1rRoVTyXXLwpFa-A") || 'placeholder-key';
+const supabase = supabaseUrl.includes('placeholder') ? null : (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$supabase$2f$supabase$2d$js$2f$dist$2f$module$2f$index$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$locals$3e$__["createClient"])(supabaseUrl, supabaseAnonKey);
 }),
 "[project]/Documents/geometry_review/app/contexts/AuthContext.tsx [app-ssr] (ecmascript)", ((__turbopack_context__) => {
 "use strict";

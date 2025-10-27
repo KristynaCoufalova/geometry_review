@@ -1,0 +1,3 @@
+module.exports=[52112,(a,b,c)=>{b.exports=a.r(16903)},17873,a=>{"use strict";a.s(["default",()=>f]);var b=a.i(84787),c=a.i(40044),d=a.i(52112),e=a.i(1438);function f(){let{signOut:a}=(0,e.useAuth)(),f=(0,d.useRouter)();return(0,c.useEffect)(()=>{(async()=>{await a(),f.push("/")})()},[a,f]),(0,b.jsx)("div",{className:"min-h-screen flex items-center justify-center bg-gray-50",children:(0,b.jsxs)("div",{className:"text-center",children:[(0,b.jsx)("div",{className:"animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"}),(0,b.jsx)("p",{className:"mt-4 text-gray-600",children:"Signing out..."})]})})}}];
+
+//# sourceMappingURL=Documents_geometry_review_415e2130._.js.map

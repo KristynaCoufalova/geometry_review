@@ -134,23 +134,54 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         console.debug('loadQuestion id=', questionId, 'studentId=', studentId)
         
         // --- fetch question ---
-        const qResp = await supabase.from('gq_questions').select('*').eq('id', questionId).single()
-        console.debug('gq_questions response', qResp)
-        
-        if (qResp.error) {
-          console.error('gq_questions error detailed', JSON.stringify(qResp.error, Object.getOwnPropertyNames(qResp.error)))
-          throw qResp.error
+        if (!supabase) {
+          // Fallback: create a mock question for testing
+          const mockQuestion = {
+            id: questionId || 'mock-question',
+            code: 'Q9',
+            title: 'Úloha 9: rovnoramenný ABC (C vrchol, AB na q, S střed ramene)',
+            prompt_md: 'V rovině leží body **C**, **S** a přímka **q**. Najděte vrcholy **A**, **B** rovnoramenného trojúhelníku **ABC** tak, že **C** je vrchol, **AB** leží na **q** a **S** je střed **jednoho** ramene.',
+            max_score: 3,
+            givens: {
+              "lines": { "q": { "p1": { "x": 0, "y": 7 }, "p2": { "x": 10, "y": 7 } } },
+              "points": { "C": { "x": 4.5, "y": 3 }, "S": { "x": 5, "y": 5 } },
+              "tolerance": 0.06
+            },
+            constraints: [
+              { "id": "A_on_q", "line": "q", "type": "point_on_line", "point": "A" },
+              { "id": "B_on_q", "line": "q", "type": "point_on_line", "point": "B" },
+              { "a": "A", "b": "C", "c": "B", "d": "C", "id": "iso", "type": "distance_equal" },
+              { "id": "S_mid", "type": "any_of", "children": [
+                { "a": "A", "b": "C", "type": "midpoint_of", "midpoint": "S" },
+                { "a": "B", "b": "C", "type": "midpoint_of", "midpoint": "S" }
+              ]}
+            ],
+            difficulty: 3,
+            tags: ["triangle", "isosceles", "construction", "geometry"]
+          }
+          console.debug('Using mock question (Supabase not available):', mockQuestion)
+          setQuestion(mockQuestion)
+        } else {
+          const qResp = await supabase.from('gq_questions').select('*').eq('id', questionId).single()
+          console.debug('gq_questions response', qResp)
+          
+          if (qResp.error) {
+            console.error('gq_questions error detailed', JSON.stringify(qResp.error, Object.getOwnPropertyNames(qResp.error)))
+            throw qResp.error
+          }
+          
+          if (!qResp.data) throw new Error('Question not found')
+          console.debug('Question loaded successfully:', qResp.data)
+          setQuestion(qResp.data)
         }
-        
-        if (!qResp.data) throw new Error('Question not found')
-        console.debug('Question loaded successfully:', qResp.data)
-        setQuestion(qResp.data)
         
         // --- ensure user ---
         let userId = studentId
         
         // Always check for authenticated user first
-        const { data: { user: authUser } } = await supabase.auth.getUser()
+        const { data: { user: authUser } } = supabase 
+          ? await supabase.auth.getUser() 
+          : { data: { user: null } }
         
         if (authUser) {
           // User is authenticated, use their real UUID
@@ -174,36 +205,59 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         }
         
         // --- create session ---
-        const sResp = await supabase.from('sessions').insert({
-          user_id: userId,
-          question_id: questionId,
-          session_data: {},
-          is_active: true
-        }).select().single()
-        console.debug('sessions insert response', sResp)
-        
-        if (sResp.error) {
-          console.error('sessions insert error', JSON.stringify(sResp.error, Object.getOwnPropertyNames(sResp.error)))
-          throw sResp.error
+        if (!supabase) {
+          // Mock session and attempt for testing
+          const mockSession = {
+            id: 'mock-session-' + Date.now(),
+            user_id: userId,
+            question_id: questionId || 'mock-question',
+            session_data: {},
+            is_active: true
+          }
+          const mockAttempt = {
+            id: 'mock-attempt-' + Date.now(),
+            question_id: questionId || 'mock-question',
+            session_id: mockSession.id,
+            state: {},
+            student_id: userId,
+            is_complete: false,
+            time_spent: 0
+          }
+          console.debug('Using mock session and attempt (Supabase not available)')
+          setSession(mockSession)
+          setAttempt(mockAttempt)
+        } else {
+          const sResp = await supabase.from('sessions').insert({
+            user_id: userId,
+            question_id: questionId,
+            session_data: {},
+            is_active: true
+          }).select().single()
+          console.debug('sessions insert response', sResp)
+          
+          if (sResp.error) {
+            console.error('sessions insert error', JSON.stringify(sResp.error, Object.getOwnPropertyNames(sResp.error)))
+            throw sResp.error
+          }
+          setSession(sResp.data)
+          
+          // --- create attempt ---
+          const aResp = await supabase.from('gq_attempts').insert({
+            question_id: questionId,
+            session_id: sResp.data.id,
+            state: {},
+            student_id: userId,
+            is_complete: false,
+            time_spent: 0
+          }).select().single()
+          console.debug('gq_attempts insert response', aResp)
+          
+          if (aResp.error) {
+            console.error('gq_attempts insert error', JSON.stringify(aResp.error, Object.getOwnPropertyNames(aResp.error)))
+            throw aResp.error
+          }
+          setAttempt(aResp.data)
         }
-        setSession(sResp.data)
-        
-        // --- create attempt ---
-        const aResp = await supabase.from('gq_attempts').insert({
-          question_id: questionId,
-          session_id: sResp.data.id,
-          state: {},
-          student_id: userId,
-          is_complete: false,
-          time_spent: 0
-        }).select().single()
-        console.debug('gq_attempts insert response', aResp)
-        
-        if (aResp.error) {
-          console.error('gq_attempts insert error', JSON.stringify(aResp.error, Object.getOwnPropertyNames(aResp.error)))
-          throw aResp.error
-        }
-        setAttempt(aResp.data)
         setStartTime(new Date())
       } catch (err) {
         // Log more informative detail for non-Error objects
@@ -425,8 +479,30 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
 
     console.debug('Initializing board (post-loading), container:', containerRef.current);
 
+    // Calculate proper bounding box to maintain uniform scaling
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const worldWidth = 12  // 11 - (-1) = 12
+    const worldHeight = 9  // 8 - (-1) = 9
+    
+    // Calculate uniform scale to maintain aspect ratio
+    const scaleX = containerRect.width / worldWidth
+    const scaleY = containerRect.height / worldHeight
+    const uniformScale = Math.min(scaleX, scaleY)
+    
+    // Calculate centered bounding box
+    const scaledWidth = worldWidth * uniformScale
+    const scaledHeight = worldHeight * uniformScale
+    const offsetX = (containerRect.width - scaledWidth) / 2
+    const offsetY = (containerRect.height - scaledHeight) / 2
+    
+    // Convert back to world coordinates
+    const left = -1 - (offsetX / uniformScale)
+    const right = 11 + (offsetX / uniformScale)
+    const top = 8 + (offsetY / uniformScale)
+    const bottom = -1 - (offsetY / uniformScale)
+
     const brd = JXG.JSXGraph.initBoard(containerRef.current, {
-      boundingbox: [-1, 8, 11, -1],
+      boundingbox: [left, top, right, bottom],
       axis: false,
       showNavigation: false,
       showCopyright: false,
@@ -659,22 +735,29 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     }
 
     try {
-      const { error } = await supabase
-        .from('gq_attempts')
-        .update({
-          state: currentState,
-          score: validation.score,
-          passed: validation.passed,
-          feedback: { message: validation.message, validation },
-          is_complete: true,
-          time_spent: timeSpent
-        })
-        .eq('id', attempt.id)
+      if (!supabase) {
+        // Mock save for testing
+        console.log('Mock save (Supabase not available):', { validation, currentState })
+        setData({ validation, timestamp: new Date().toISOString() })
+        setFeedback(validation.message)
+      } else {
+        const { error } = await supabase
+          .from('gq_attempts')
+          .update({
+            state: currentState,
+            score: validation.score,
+            passed: validation.passed,
+            feedback: { message: validation.message, validation },
+            is_complete: true,
+            time_spent: timeSpent
+          })
+          .eq('id', attempt.id)
 
-      if (error) throw error
+        if (error) throw error
 
-      setData({ validation, timestamp: new Date().toISOString() })
-      setFeedback(validation.message)
+        setData({ validation, timestamp: new Date().toISOString() })
+        setFeedback(validation.message)
+      }
     } catch (err) {
       console.error('Error saving attempt:', err)
       setFeedback('Chyba při ukládání')

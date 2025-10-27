@@ -660,10 +660,6 @@
     position: relative;
   }
 
-  .inset-0 {
-    inset: calc(var(--spacing) * 0);
-  }
-
   .z-40 {
     z-index: 40;
   }

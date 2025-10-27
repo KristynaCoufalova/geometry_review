@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import JXG from 'jsxgraph'
 import { Save, Trash2, Circle, Pencil, RotateCcw, Eraser, Ruler, Triangle, Gauge, ArrowLeft, CheckCircle, XCircle, Clock } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
@@ -142,6 +144,8 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         
         if (!qResp.data) throw new Error('Question not found')
         console.debug('Question loaded successfully:', qResp.data)
+        console.debug('Question prompt_md:', qResp.data.prompt_md)
+        console.debug('Question givens:', qResp.data.givens)
         setQuestion(qResp.data)
         
         // --- ensure user ---
@@ -456,12 +460,10 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     };
   }, [loading, error]); // 👈 key change
 
-  // Create givens when question loads
+  // Create givens when question loads AND the board is ready
   useEffect(() => {
-    if (!boardRef.current || !question) {
-      console.debug('Givens creation skipped - board:', !!boardRef.current, 'question:', !!question)
-      return
-    }
+    if (loading || error) return;                 // wait until data phase is done
+    if (!boardRef.current || !question) return;   // wait until board exists
 
     console.debug('Creating givens for question:', question.title, 'givens:', question.givens)
 
@@ -557,13 +559,14 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     
     // Force board update to render the newly created givens
     if (boardRef.current) {
-      boardRef.current.fullUpdate()
+      boardRef.current.renderer.resize();
+      boardRef.current.fullUpdate();
       console.debug('Board updated to display givens')
     }
     
     // Additional debugging
     console.debug('Board objects after givens creation:', Object.keys(boardRef.current!.objects))
-  }, [question])
+  }, [question, loading, error]); // 👈 key change
 
   function undoLast() {
     const brd = boardRef.current
@@ -770,10 +773,12 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
 
           {/* Question prompt */}
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
-            <div 
-              className="text-gray-700 prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: question.prompt_md }}
-            />
+            <div className="prose prose-sm max-w-none text-gray-700">
+              {console.log('Rendering prompt_md:', question.prompt_md)}
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {question.prompt_md ?? ''}
+              </ReactMarkdown>
+            </div>
           </div>
 
           {/* Toolbar */}

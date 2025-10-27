@@ -144,8 +144,6 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         
         if (!qResp.data) throw new Error('Question not found')
         console.debug('Question loaded successfully:', qResp.data)
-        console.debug('Question prompt_md:', qResp.data.prompt_md)
-        console.debug('Question givens:', qResp.data.givens)
         setQuestion(qResp.data)
         
         // --- ensure user ---
@@ -773,8 +771,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
 
           {/* Question prompt */}
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
-            <div className="prose prose-sm max-w-none text-gray-700">
-              {console.log('Rendering prompt_md:', question.prompt_md)}
+            <div className="text-gray-700 text-sm markdown-content">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {question.prompt_md ?? ''}
               </ReactMarkdown>

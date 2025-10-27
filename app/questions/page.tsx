@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Star, Clock, Target, BookOpen } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { supabase } from '../../lib/supabase'
 
 interface Question {
@@ -135,14 +137,13 @@ export default function QuestionsPage() {
                 </div>
 
                 <div className="text-sm text-gray-600 mb-4">
-                  <div 
-                    className="prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ 
-                      __html: question.prompt_md.length > 100 
+                  <div className="markdown-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {question.prompt_md.length > 100 
                         ? question.prompt_md.substring(0, 100) + '...'
-                        : question.prompt_md 
-                    }}
-                  />
+                        : question.prompt_md}
+                    </ReactMarkdown>
+                  </div>
                 </div>
 
                 {question.tags && question.tags.length > 0 && (

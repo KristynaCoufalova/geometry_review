@@ -1884,6 +1884,23 @@
   }
 }
 
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content strong {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.markdown-content p {
+  margin-bottom: 1rem;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
 :root {
   --background: #fff;
   --foreground: #171717;

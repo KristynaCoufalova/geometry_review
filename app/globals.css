@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+/* Custom styles for ReactMarkdown */
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content strong {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.markdown-content p {
+  margin-bottom: 1rem;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

@@ -49,6 +49,12 @@ export default function GeneralGeometryTester() {
   const renameModeRef = useRef(renameMode)
   const handleClickRef = useRef<((brd: JBoard, e: any) => void) | null>(null)
   
+  // Rename mode refs for down+up approach
+  const renameArmRef = useRef<{ pt:any|null, wasFixed:boolean, wasDraggable:boolean }>(
+    { pt:null, wasFixed:false, wasDraggable:true }
+  )
+  const downPosRef = useRef<{x:number,y:number}|null>(null)
+  
   useEffect(() => { toolRef.current = tool }, [tool])
   useEffect(() => { selectedRef.current = selected }, [selected])
   useEffect(() => { uiBusyRef.current = uiBusy }, [uiBusy])
@@ -75,7 +81,7 @@ export default function GeneralGeometryTester() {
     const pretty = toSubscript(trimmed)                 // converts A_1 -> A₁
     pt.setAttribute({ name: pretty, withLabel: !!trimmed })
     ;(pt as any)._rawName = trimmed                      // keep searchable original
-    pt.board.update()
+    // Removed pt.board.update() to prevent point attachment issues
   }, [])
 
   // find a point under event (prefers non-fixed)
@@ -112,6 +118,9 @@ export default function GeneralGeometryTester() {
   const handleClick = useCallback((brd: JBoard, e: any) => {
     if (uiBusyRef.current) return
     
+    // Prevent tools from firing while in rename mode
+    if (renameModeRef.current) return
+    
     // Check if the click is on a physical tool - if so, don't handle it
     const target = e.originalEvent?.target as HTMLElement
     if (target && (target.closest('.group') || target.classList.contains('group'))) {
@@ -140,13 +149,8 @@ export default function GeneralGeometryTester() {
         break
       }
       case 'point': {
-        const alt = !!e?.originalEvent?.altKey
-        const p = createPointSmart(brd, xy)
+        createPointSmart(brd, xy)
         setFeedback('Bod vytvořen')
-        if (alt) {
-          const proposed = window.prompt('Název bodu (nepovinné):', '') ?? ''
-          renamePoint(p, proposed)
-        }
         break
       }
       case 'segment': {
@@ -306,49 +310,102 @@ export default function GeneralGeometryTester() {
     const brd = boardRef.current
     if (!brd) return
 
-    // Remove old handlers
+    // Clean old handlers
     brd.off('down')
+    brd.off('up')
     brd.off('dblclick')
 
-    // Add new handlers with current rename mode
-    const dblHandler = (e:any) => {
-      if (uiBusyRef.current) return
-      const pt = pointUnder(brd, e)
-      if (!pt) return
+    const CLICK_EPS = 0.12 // world units; tweak if needed
+
+    const openPrompt = (pt:any, e:any) => {
       const currentRaw = (pt as any)._rawName || ''
       let proposed = (window.prompt('Název bodu (např. A, B, C, A_1, A_2):', currentRaw) ?? '').trim()
+
       if (proposed && isNameTaken(brd, proposed, (pt as any).id)) {
-        // append a number if taken
         let i = 2
         while (isNameTaken(brd, `${proposed}_${i}`, (pt as any).id)) i++
         proposed = `${proposed}_${i}`
       }
+
       renamePoint(pt, proposed)
+
+      // Restore mobility
+      const arm = renameArmRef.current
+      ;(pt as any).setAttribute({ fixed: arm.wasFixed })
+      ;(pt as any).draggable = arm.wasDraggable
+
+      // Stop further board interaction from this click
+      if (e?.originalEvent) {
+        e.originalEvent.stopPropagation()
+        e.originalEvent.preventDefault()
+      }
+      brd.update()
+
+      if (!proposed) setRenameMode(false)
+
+      // Clear arm
+      renameArmRef.current = { pt:null, wasFixed:false, wasDraggable:true }
+      downPosRef.current = null
     }
 
+    // 1) DOWN: if in rename mode and on a point, FREEZE it and arm rename
     const downHandler = (e:any) => {
-      if (handleClickRef.current && !renameModeRef.current) {
-        handleClickRef.current(brd, e)
+      if (uiBusyRef.current) return
+
+      // If not in rename mode, pass through to normal drawing handler
+      if (!renameModeRef.current) {
+        if (handleClickRef.current) handleClickRef.current(brd, e)
         return
       }
-      if (uiBusyRef.current) return
-      if (renameModeRef.current) {
-        const pt = pointUnder(brd, e)
-        if (!pt) return
-        const currentRaw = (pt as any)._rawName || ''
-        let proposed = (window.prompt('Název bodu (např. A, B, C, A_1, A_2):', currentRaw) ?? '').trim()
-        if (proposed && isNameTaken(brd, proposed, (pt as any).id)) {
-          // append a number if taken
-          let i = 2
-          while (isNameTaken(brd, `${proposed}_${i}`, (pt as any).id)) i++
-          proposed = `${proposed}_${i}`
-        }
-        renamePoint(pt, proposed)
+
+      const pt = pointUnder(brd, e)
+      if (!pt) return
+
+      // Freeze now (before any drag begins)
+      const wasFixed = !!(pt as any).visProp.fixed
+      const wasDraggable = !!(pt as any).draggable
+      ;(pt as any).setAttribute({ fixed: true })
+      ;(pt as any).draggable = false
+
+      renameArmRef.current = { pt, wasFixed, wasDraggable }
+      downPosRef.current = getMouseCoords(brd, e)
+
+      // Kill default drag start
+      if (e.originalEvent) {
+        e.originalEvent.stopPropagation()
+        e.originalEvent.preventDefault()
       }
+    }
+
+    // 2) UP: if we armed a point and movement was small → open prompt
+    const upHandler = (e:any) => {
+      const arm = renameArmRef.current
+      if (!arm.pt) return
+
+      const up = getMouseCoords(brd, e)
+      const down = downPosRef.current || up
+      const moved = Math.hypot(up.x - down.x, up.y - down.y)
+
+      // Only treat as rename if it was a click, not a drag
+      if (moved <= CLICK_EPS) {
+        openPrompt(arm.pt, e)
+        return
+      }
+
+      // If it was a drag after all, restore the point & abort rename
+      const { pt } = arm
+      ;(pt as any).setAttribute({ fixed: arm.wasFixed })
+      ;(pt as any).draggable = arm.wasDraggable
+      renameArmRef.current = { pt:null, wasFixed:false, wasDraggable:true }
+      downPosRef.current = null
     }
 
     brd.on('down', downHandler)
-    brd.on('dblclick', dblHandler)
+    brd.on('up', upHandler)
+
+    return () => {
+      try { brd.off('down', downHandler); brd.off('up', upHandler) } catch {}
+    }
   }, [renameMode, renamePoint])
 
   function undoLast() {

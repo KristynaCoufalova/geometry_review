@@ -109,6 +109,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   useEffect(() => { toolRef.current = tool }, [tool])
   useEffect(() => { selectedRef.current = selected }, [selected])
   useEffect(() => { uiBusyRef.current = uiBusy }, [uiBusy])
+  
 
   // Timer effect
   useEffect(() => {
@@ -140,25 +141,27 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         }
         
         if (!qResp.data) throw new Error('Question not found')
+        console.debug('Question loaded successfully:', qResp.data)
         setQuestion(qResp.data)
         
         // --- ensure user ---
         let userId = studentId
         
-        if (studentId === 'anonymous') {
+        // Always check for authenticated user first
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        
+        if (authUser) {
+          // User is authenticated, use their real UUID
+          userId = authUser.id
+          console.debug('Using authenticated user:', authUser.email, 'ID:', authUser.id)
+        } else if (studentId === 'anonymous') {
           // For anonymous users, we'll use a fallback approach
           userId = 'anonymous-user-' + Date.now()
           console.debug('Using anonymous fallback userId:', userId)
         } else {
-          // For authenticated users, validate the user exists
-          const { data: { user: authUser } } = await supabase.auth.getUser()
-          if (authUser && authUser.id === studentId) {
-            userId = authUser.id
-            console.debug('Using authenticated user:', authUser.email, 'ID:', authUser.id)
-          } else {
-            console.warn('Specified studentId not found in auth, using as-is:', studentId)
-            userId = studentId
-          }
+          // Use the provided studentId as-is (should be a valid UUID)
+          userId = studentId
+          console.debug('Using provided studentId:', userId)
         }
         
         // Validate userId looks like a UUID before using it for sessions.user_id
@@ -410,43 +413,48 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     }
   }
 
-  // Initialize board immediately (like GeneralGeometryTester)
+  // Initialize board AFTER the loading phase so the container actually exists
   useEffect(() => {
-    if (!containerRef.current) return
+    // wait until question has finished loading AND there's no error
+    if (loading || error) return;
 
-    console.debug('Initializing board immediately')
+    // only init once, and only when the container is mounted
+    if (!containerRef.current || boardRef.current) return;
+
+    console.debug('Initializing board (post-loading), container:', containerRef.current);
 
     const brd = JXG.JSXGraph.initBoard(containerRef.current, {
-      boundingbox: [-1, 8, 11, -1], 
+      boundingbox: [-1, 8, 11, -1],
       axis: false,
-      showNavigation: false, 
+      showNavigation: false,
       showCopyright: false,
       grid: true,
       pan: { enabled: false },
       zoom: false,
       keepaspectratio: true
-    }) as JBoard
-    
-    boardRef.current = brd
-    console.debug('Board created successfully:', brd)
+    }) as JBoard;
+
+    boardRef.current = brd;
 
     const downHandler = (e: any) => {
-      if (handleClickRef.current) {
-        handleClickRef.current(brd, e)
-      }
-    }
+      if (handleClickRef.current) handleClickRef.current(brd, e);
+    };
+    brd.on('down', downHandler);
 
-    brd.on('down', downHandler)
-    console.debug('Event handler attached to board')
+    // Make sure the SVG sizes correctly once visible
+    setTimeout(() => {
+      try {
+        brd?.renderer?.resize?.();
+        brd?.fullUpdate?.();
+      } catch {}
+    }, 0);
 
     return () => {
-      try { 
-        JXG.JSXGraph.freeBoard(brd) 
-      } catch {}
-      boardRef.current = null
-      givensRef.current = null
-    }
-  }, []) // Initialize once, like GeneralGeometryTester
+      try { JXG.JSXGraph.freeBoard(brd); } catch {}
+      boardRef.current = null;
+      givensRef.current = null;
+    };
+  }, [loading, error]); // 👈 key change
 
   // Create givens when question loads
   useEffect(() => {
@@ -456,6 +464,19 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     }
 
     console.debug('Creating givens for question:', question.title, 'givens:', question.givens)
+
+    // Clear any existing givens first
+    if (givensRef.current) {
+      Object.values(givensRef.current).forEach((obj: any) => {
+        if (obj && typeof obj.removeObject === 'function') {
+          try {
+            boardRef.current!.removeObject(obj)
+          } catch (e) {
+            console.warn('Error removing existing givens:', e)
+          }
+        }
+      })
+    }
 
     const givens: any = {}
     if (question.givens) {
@@ -509,10 +530,39 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
       } catch (err) {
         console.error('Error parsing givens:', err)
       }
+    } else {
+      // Fallback: create default givens for the isosceles triangle problem
+      console.debug('No givens data found, creating default givens for isosceles triangle problem')
+      const q = boardRef.current!.create('line', [[0, 7], [10, 7]], {
+        strokeColor: '#000', strokeWidth: 2,
+        name: 'q', withLabel: true, fixed: true,
+        label: { position: 'rt', offset: [10, 0] }
+      })
+      const S = boardRef.current!.create('point', [5, 5], {
+        name: 'S', size: 3, strokeColor: '#000', fillColor: '#000', fixed: true, 
+        label: { offset: [5, 10] }
+      })
+      const C = boardRef.current!.create('point', [4.5, 3], {
+        name: 'C', size: 3, strokeColor: '#000', fillColor: '#000', fixed: true, 
+        label: { offset: [5, -15] }
+      })
+      
+      givens.q = q
+      givens.S = S
+      givens.C = C
     }
     
     givensRef.current = givens
     console.debug('Givens created:', givens)
+    
+    // Force board update to render the newly created givens
+    if (boardRef.current) {
+      boardRef.current.fullUpdate()
+      console.debug('Board updated to display givens')
+    }
+    
+    // Additional debugging
+    console.debug('Board objects after givens creation:', Object.keys(boardRef.current!.objects))
   }, [question])
 
   function undoLast() {

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import JXG from 'jsxgraph'
-import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut, Download, Upload, Info, Settings, ChevronUp } from 'lucide-react'
+import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut, Download, Upload, Info, Settings, ChevronUp, Camera, Keyboard } from 'lucide-react'
 import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
@@ -87,6 +87,9 @@ export default function GeneralGeometryTester() {
   // Grid settings state
   const [showSettings, setShowSettings] = useState(false)
   const [gridOption, setGridOption] = useState<GridMode>('major')
+  const [canUndoState, setCanUndoState] = useState(false)
+  const [canRedoState, setCanRedoState] = useState(false)
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
 
   const toolRef = useRef(tool)
   const uiBusyRef = useRef(uiBusy)
@@ -244,6 +247,7 @@ export default function GeneralGeometryTester() {
           const attr = { name:'', size:2, strokeColor:'#444', fillColor:'#666' }
           const op = undoRedoRef.current?.createPointOperation(snapped.x, snapped.y, attr)
           if (op) undoRedoRef.current?.pushOperation(op)
+          updateUndoRedoState()
           setFeedback('Bod vytvořen')
         } else {
           setFeedback('Bod již existuje na této pozici')
@@ -280,6 +284,7 @@ export default function GeneralGeometryTester() {
           undoRedoRef.current?.pushOperation(op)
         }
         undoRedoRef.current?.commit()
+        updateUndoRedoState()
         selectionMgr.clear()
         setFeedback('Úsečka vytvořena')
         break
@@ -311,6 +316,7 @@ export default function GeneralGeometryTester() {
           undoRedoRef.current?.pushOperation(op)
         }
         undoRedoRef.current?.commit()
+        updateUndoRedoState()
         selectionMgr.clear()
         setFeedback('Přímka vytvořena')
         break
@@ -342,6 +348,7 @@ export default function GeneralGeometryTester() {
           undoRedoRef.current?.pushOperation(op)
         }
         undoRedoRef.current?.commit()
+        updateUndoRedoState()
         selectionMgr.clear()
         setFeedback('Kružnice vytvořena')
         break
@@ -353,6 +360,7 @@ export default function GeneralGeometryTester() {
           const delOp = undoRedoRef.current?.createDeleteOperation(toRemove)
           if (delOp) {
             undoRedoRef.current?.pushOperation(delOp)
+            updateUndoRedoState()
             setFeedback('Objekt smazán')
           } else {
             // fallback: hard remove (won't be undoable)
@@ -370,8 +378,28 @@ export default function GeneralGeometryTester() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if ((e.key === 'n' || e.key === 'N') && !uiBusyRef.current) {
+      if (uiBusyRef.current) return
+      
+      // Rename mode toggle
+      if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey) {
         setRenameMode(v => !v)
+        return
+      }
+
+      // Undo (Ctrl+Z or Cmd+Z)
+      if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault()
+        undoRedoRef.current?.undo()
+        updateUndoRedoState()
+        return
+      }
+
+      // Redo (Ctrl+Shift+Z or Cmd+Shift+Z)
+      if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault()
+        undoRedoRef.current?.redo()
+        updateUndoRedoState()
+        return
       }
     }
 
@@ -595,11 +623,84 @@ export default function GeneralGeometryTester() {
 
   function undoLast() {
     undoRedoRef.current?.undo()
+    updateUndoRedoState()
   }
 
   function redoLast() {
     undoRedoRef.current?.redo()
+    updateUndoRedoState()
   }
+
+  function updateUndoRedoState() {
+    setCanUndoState(undoRedoRef.current?.canUndo() ?? false)
+    setCanRedoState(undoRedoRef.current?.canRedo() ?? false)
+  }
+
+  // Auto-save to localStorage
+  useEffect(() => {
+    if (!autoSaveEnabled || !boardManagerRef.current) return
+
+    const interval = setInterval(() => {
+      const brd = boardManagerRef.current?.getBoard()
+      if (!brd) return
+
+      const constructionData = {
+        timestamp: new Date().toISOString(),
+        objects: Object.values(brd.objects).map((obj: any) => ({
+          id: obj.id,
+          type: obj.elType,
+          name: obj.name,
+          properties: obj.visProp
+        })),
+        createdStack: [...createdStack],
+        gridOption: gridOption,
+        rulerPosition,
+        trianglePosition,
+        protractorPosition,
+        rulerVisible,
+        triangleVisible,
+        protractorVisible
+      }
+
+      try {
+        localStorage.setItem('geometry_construction_autosave', JSON.stringify(constructionData))
+      } catch (e) {
+        // Ignore localStorage errors (e.g., quota exceeded)
+      }
+    }, 5000) // Auto-save every 5 seconds
+
+    return () => clearInterval(interval)
+  }, [autoSaveEnabled, createdStack, gridOption, rulerPosition, trianglePosition, protractorPosition, rulerVisible, triangleVisible, protractorVisible])
+
+  // Load from auto-save on mount
+  useEffect(() => {
+    if (!boardManagerRef.current) return
+
+    try {
+      const saved = localStorage.getItem('geometry_construction_autosave')
+      if (saved) {
+        const data = JSON.parse(saved)
+        // Ask user if they want to restore
+        if (window.confirm('Našel se automaticky uložený soubor. Chcete ho obnovit?')) {
+          setData(data)
+          if (data.gridOption) setGridOption(data.gridOption)
+          if (data.rulerPosition) setRulerPosition(data.rulerPosition)
+          if (data.trianglePosition) setTrianglePosition(data.trianglePosition)
+          if (data.protractorPosition) setProtractorPosition(data.protractorPosition)
+          if (data.rulerVisible !== undefined) setRulerVisible(data.rulerVisible)
+          if (data.triangleVisible !== undefined) setTriangleVisible(data.triangleVisible)
+          if (data.protractorVisible !== undefined) setProtractorVisible(data.protractorVisible)
+        }
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+  }, [])
+
+  // Update undo/redo state after operations
+  useEffect(() => {
+    updateUndoRedoState()
+  }, [data, createdStack])
 
   function clearAll() {
     const brd = boardManagerRef.current?.getBoard()
@@ -648,6 +749,76 @@ export default function GeneralGeometryTester() {
     link.click()
     URL.revokeObjectURL(url)
     setFeedback('Konstrukce exportována')
+  }
+
+  function exportAsImage() {
+    const brd = boardManagerRef.current?.getBoard()
+    if (!brd) return
+
+    try {
+      // Get SVG container
+      const svgContainer = brd.renderer?.container
+      if (!svgContainer) {
+        setFeedback('Chyba: Nepodařilo se získat SVG element')
+        return
+      }
+
+      const svg = svgContainer.querySelector('svg') as SVGElement
+      if (!svg) {
+        setFeedback('Chyba: Nepodařilo se najít SVG')
+        return
+      }
+
+      // Clone SVG
+      const clonedSvg = svg.cloneNode(true) as SVGElement
+      const svgData = new XMLSerializer().serializeToString(clonedSvg)
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(svgBlob)
+
+      // Create image and convert to canvas
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = containerRef.current?.clientWidth || 800
+        canvas.height = containerRef.current?.clientHeight || 600
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          setFeedback('Chyba: Nepodařilo se vytvořit canvas')
+          URL.revokeObjectURL(url)
+          return
+        }
+
+        // Fill white background
+        ctx.fillStyle = 'white'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0)
+
+        // Convert to PNG and download
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            setFeedback('Chyba: Nepodařilo se vytvořit obrázek')
+            URL.revokeObjectURL(url)
+            return
+          }
+          const downloadUrl = URL.createObjectURL(blob)
+          const link = document.createElement('a')
+          link.href = downloadUrl
+          link.download = `construction_${new Date().toISOString().split('T')[0]}.png`
+          link.click()
+          URL.revokeObjectURL(downloadUrl)
+          URL.revokeObjectURL(url)
+          setFeedback('Konstrukce exportována jako obrázek')
+        }, 'image/png')
+      }
+      img.onerror = () => {
+        setFeedback('Chyba při exportu obrázku')
+        URL.revokeObjectURL(url)
+      }
+      img.src = url
+    } catch (error) {
+      setFeedback('Chyba při exportu obrázku')
+      console.error('Export error:', error)
+    }
   }
 
   function importConstruction(event: React.ChangeEvent<HTMLInputElement>) {
@@ -729,6 +900,18 @@ export default function GeneralGeometryTester() {
                   </ul>
                 </div>
               </div>
+              <div className="mt-4 pt-3 border-t border-blue-300">
+                <h4 className="font-medium mb-2 text-blue-800 flex items-center gap-2">
+                  <Keyboard size={16} />
+                  Klávesové zkratky:
+                </h4>
+                <ul className="space-y-1 text-sm text-blue-700">
+                  <li>• <strong>N:</strong> Režim přejmenování bodů</li>
+                  <li>• <strong>Ctrl/Cmd + Z:</strong> Zpět (Undo)</li>
+                  <li>• <strong>Ctrl/Cmd + Shift + Z:</strong> Znovu (Redo)</li>
+                  <li>• <strong>Delete:</strong> Smazat vybraný objekt (když je aktivní guma)</li>
+                </ul>
+              </div>
             </div>
           )}
 
@@ -736,9 +919,10 @@ export default function GeneralGeometryTester() {
           <div className="flex flex-wrap gap-2 mb-4 p-4 bg-gray-100 rounded-lg">
             <button 
               onClick={() => setTool('mouse')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
+              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
                 tool === 'mouse' ? 'bg-gray-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
               }`}
+              title="Myš - Interakce s objekty bez vytváření"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
@@ -748,41 +932,46 @@ export default function GeneralGeometryTester() {
             </button>
             <button 
               onClick={() => setTool('point')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
+              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
                 tool === 'point' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
               }`}
+              title="Bod - Vytvoření bodu kliknutím"
             >
               <Circle size={18}/> Bod
             </button>
             <button 
               onClick={() => setTool('segment')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
+              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
                 tool === 'segment' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
               }`}
+              title="Úsečka - Klikněte na dva body"
             >
               <Pencil size={18}/> Úsečka
             </button>
             <button 
               onClick={() => setTool('line')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
+              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
                 tool === 'line' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
               }`}
+              title="Přímka - Klikněte na dva body"
             >
               <Pencil size={18}/> Přímka
             </button>
             <button 
               onClick={() => setTool('circle')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
+              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
                 tool === 'circle' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
               }`}
+              title="Kružnice - Střed a bod na kružnici"
             >
               <Circle size={18}/> Kružnice
             </button>
             <button 
               onClick={() => setTool('rubber')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
+              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
                 tool === 'rubber' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
               }`}
+              title="Guma - Smazání objektu"
             >
               <Eraser size={18}/> Guma
             </button>
@@ -825,10 +1014,20 @@ export default function GeneralGeometryTester() {
 
             <div className="flex-1"></div>
 
-            <button onClick={undoLast} className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-2">
+            <button 
+              onClick={undoLast} 
+              disabled={!canUndoState}
+              className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              title="Zpět (Ctrl/Cmd + Z)"
+            >
               <RotateCcw size={18}/> Zpět
             </button>
-            <button onClick={redoLast} className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-2">
+            <button 
+              onClick={redoLast} 
+              disabled={!canRedoState}
+              className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              title="Znovu (Ctrl/Cmd + Shift + Z)"
+            >
               <RotateCw size={18}/> Znovu
             </button>
             <button onClick={clearAll} className="px-3 py-2 rounded bg-red-500 text-white hover:bg-red-600 flex items-center gap-2">
@@ -837,8 +1036,11 @@ export default function GeneralGeometryTester() {
             <button onClick={saveConstruction} className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700 flex items-center gap-2">
               <Save size={18}/> Uložit
             </button>
-            <button onClick={exportConstruction} disabled={!data} className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+            <button onClick={exportConstruction} disabled={!data} className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors" title="Exportovat jako JSON">
               <Download size={18}/> Export
+            </button>
+            <button onClick={exportAsImage} className="px-3 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-2 transition-colors" title="Exportovat jako obrázek (PNG)">
+              <Camera size={18}/> Obrázek
             </button>
             <label className="px-3 py-2 rounded bg-purple-600 text-white hover:bg-purple-700 cursor-pointer flex items-center gap-2">
               <Upload size={18}/> Import
@@ -857,14 +1059,24 @@ export default function GeneralGeometryTester() {
           <div className="relative">
             {/* Settings Button - positioned outside JSXGraph container */}
             <div className="absolute top-2 right-2 z-50 settings-dropdown" style={{ zIndex: 9999 }}>
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className="p-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg shadow-lg transition-colors"
-                title="Nastavení mřížky"
-                style={{ zIndex: 10000 }}
-              >
-                <Settings size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Grid mode indicator */}
+                <div className="px-2 py-1 bg-white bg-opacity-80 rounded text-xs text-gray-700 border border-gray-300">
+                  {gridOption === 'none' && 'Žádná mřížka'}
+                  {gridOption === 'major' && 'Hlavní'}
+                  {gridOption === 'minor' && 'Vedlejší'}
+                  {gridOption === 'major-minor' && 'Hlavní+Vedlejší'}
+                  {gridOption === 'dot' && 'Bodová'}
+                </div>
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="p-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg shadow-lg transition-colors"
+                  title="Nastavení mřížky"
+                  style={{ zIndex: 10000 }}
+                >
+                  <Settings size={18} />
+                </button>
+              </div>
               
               {/* Settings Dropdown */}
               {showSettings && (

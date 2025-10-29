@@ -15,7 +15,7 @@
   "static/chunks/c0305_jsxgraph_src_element_2757da74._.js",
   "static/chunks/c0305_jsxgraph_src_3d_993ddeaa._.js",
   "static/chunks/c0305_jsxgraph_src_4db65172._.js",
-  "static/chunks/c0305_0a46822f._.js"
+  "static/chunks/c0305_a350d2a8._.js"
 ],
     source: "dynamic"
 });

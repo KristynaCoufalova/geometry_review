@@ -1,18 +1,25 @@
 {
   "pages": {
     "/questions/page": [
-      "static/chunks/95a2184468d6607a.css",
-      "static/chunks/ca672abd59f0f978.js",
-      "static/chunks/4a12ffe39c03d7e0.js",
-      "static/chunks/09546fb1b24f8484.js",
-      "static/chunks/8b3f7cc461da53d0.js",
-      "static/chunks/17e60706c2dcef68.js",
-      "static/chunks/0f108d2ab1f233c0.js",
-      "static/chunks/0eea2d395f44a330.js",
-      "static/chunks/7e13191945ee4f03.js",
-      "static/chunks/e7a25bc2bbe0b219.js",
-      "static/chunks/e515ce1e15089024.js",
-      "static/chunks/turbopack-8a42e27cdc214bf8.js"
+      "static/chunks/[root-of-the-server]__8fe2a2ff._.css",
+      "static/chunks/c0305_@supabase_node-fetch_browser_90804d2d.js",
+      "static/chunks/c0305_10383b47._.js",
+      "static/chunks/Documents_geometry_review_8b09b98f._.js",
+      "static/chunks/Documents_geometry_review_app_layout_tsx_ab7bb41d._.js",
+      "static/chunks/c0305_next_dist_client_components_builtin_global-error_0899ba7e.js",
+      "static/chunks/c0305_micromark-core-commonmark_dev_lib_353400a1._.js",
+      "static/chunks/c0305_67442653._.js",
+      "static/chunks/Documents_geometry_review_app_questions_page_tsx_545a9eb8._.js",
+      "static/chunks/Documents_geometry_review_app_questions_page_tsx_0899ba7e._.js",
+      "static/chunks/[turbopack]_browser_dev_hmr-client_hmr-client_ts_9a02bfa7._.js",
+      "static/chunks/c0305_next_dist_compiled_react-dom_d2fcd4be._.js",
+      "static/chunks/c0305_next_dist_compiled_next-devtools_index_43c850e8.js",
+      "static/chunks/c0305_next_dist_compiled_9c34fd5b._.js",
+      "static/chunks/c0305_next_dist_client_13280505._.js",
+      "static/chunks/c0305_next_dist_6f3f9413._.js",
+      "static/chunks/c0305_@swc_helpers_cjs_e7a6db02._.js",
+      "static/chunks/Documents_geometry_review_a0ff3932._.js",
+      "static/chunks/turbopack-Documents_geometry_review_c77f08c1._.js"
     ]
   }
 }

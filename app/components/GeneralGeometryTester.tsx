@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import JXG from 'jsxgraph'
-import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut, Download, Upload, Info, Settings, ChevronUp, Camera, Keyboard } from 'lucide-react'
+import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut, Download, Upload, Info, Settings, ChevronUp, Keyboard } from 'lucide-react'
 import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
@@ -680,17 +680,15 @@ export default function GeneralGeometryTester() {
       const saved = localStorage.getItem('geometry_construction_autosave')
       if (saved) {
         const data = JSON.parse(saved)
-        // Ask user if they want to restore
-        if (window.confirm('Našel se automaticky uložený soubor. Chcete ho obnovit?')) {
-          setData(data)
-          if (data.gridOption) setGridOption(data.gridOption)
-          if (data.rulerPosition) setRulerPosition(data.rulerPosition)
-          if (data.trianglePosition) setTrianglePosition(data.trianglePosition)
-          if (data.protractorPosition) setProtractorPosition(data.protractorPosition)
-          if (data.rulerVisible !== undefined) setRulerVisible(data.rulerVisible)
-          if (data.triangleVisible !== undefined) setTriangleVisible(data.triangleVisible)
-          if (data.protractorVisible !== undefined) setProtractorVisible(data.protractorVisible)
-        }
+        // Auto-restore without confirmation
+        setData(data)
+        if (data.gridOption) setGridOption(data.gridOption)
+        if (data.rulerPosition) setRulerPosition(data.rulerPosition)
+        if (data.trianglePosition) setTrianglePosition(data.trianglePosition)
+        if (data.protractorPosition) setProtractorPosition(data.protractorPosition)
+        if (data.rulerVisible !== undefined) setRulerVisible(data.rulerVisible)
+        if (data.triangleVisible !== undefined) setTriangleVisible(data.triangleVisible)
+        if (data.protractorVisible !== undefined) setProtractorVisible(data.protractorVisible)
       }
     } catch (e) {
       // Ignore errors
@@ -749,76 +747,6 @@ export default function GeneralGeometryTester() {
     link.click()
     URL.revokeObjectURL(url)
     setFeedback('Konstrukce exportována')
-  }
-
-  function exportAsImage() {
-    const brd = boardManagerRef.current?.getBoard()
-    if (!brd) return
-
-    try {
-      // Get SVG container
-      const svgContainer = brd.renderer?.container
-      if (!svgContainer) {
-        setFeedback('Chyba: Nepodařilo se získat SVG element')
-        return
-      }
-
-      const svg = svgContainer.querySelector('svg') as SVGElement
-      if (!svg) {
-        setFeedback('Chyba: Nepodařilo se najít SVG')
-        return
-      }
-
-      // Clone SVG
-      const clonedSvg = svg.cloneNode(true) as SVGElement
-      const svgData = new XMLSerializer().serializeToString(clonedSvg)
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
-      const url = URL.createObjectURL(svgBlob)
-
-      // Create image and convert to canvas
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = containerRef.current?.clientWidth || 800
-        canvas.height = containerRef.current?.clientHeight || 600
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          setFeedback('Chyba: Nepodařilo se vytvořit canvas')
-          URL.revokeObjectURL(url)
-          return
-        }
-
-        // Fill white background
-        ctx.fillStyle = 'white'
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(img, 0, 0)
-
-        // Convert to PNG and download
-        canvas.toBlob((blob) => {
-          if (!blob) {
-            setFeedback('Chyba: Nepodařilo se vytvořit obrázek')
-            URL.revokeObjectURL(url)
-            return
-          }
-          const downloadUrl = URL.createObjectURL(blob)
-          const link = document.createElement('a')
-          link.href = downloadUrl
-          link.download = `construction_${new Date().toISOString().split('T')[0]}.png`
-          link.click()
-          URL.revokeObjectURL(downloadUrl)
-          URL.revokeObjectURL(url)
-          setFeedback('Konstrukce exportována jako obrázek')
-        }, 'image/png')
-      }
-      img.onerror = () => {
-        setFeedback('Chyba při exportu obrázku')
-        URL.revokeObjectURL(url)
-      }
-      img.src = url
-    } catch (error) {
-      setFeedback('Chyba při exportu obrázku')
-      console.error('Export error:', error)
-    }
   }
 
   function importConstruction(event: React.ChangeEvent<HTMLInputElement>) {
@@ -916,134 +844,148 @@ export default function GeneralGeometryTester() {
           )}
 
           {/* Toolbar */}
-          <div className="flex flex-wrap gap-2 mb-4 p-4 bg-gray-100 rounded-lg">
-            <button 
-              onClick={() => setTool('mouse')}
-              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
-                tool === 'mouse' ? 'bg-gray-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Myš - Interakce s objekty bez vytváření"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
-                <path d="M13 13l6 6"/>
-              </svg>
-              Myš
-            </button>
-            <button 
-              onClick={() => setTool('point')}
-              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
-                tool === 'point' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Bod - Vytvoření bodu kliknutím"
-            >
-              <Circle size={18}/> Bod
-            </button>
-            <button 
-              onClick={() => setTool('segment')}
-              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
-                tool === 'segment' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Úsečka - Klikněte na dva body"
-            >
-              <Pencil size={18}/> Úsečka
-            </button>
-            <button 
-              onClick={() => setTool('line')}
-              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
-                tool === 'line' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Přímka - Klikněte na dva body"
-            >
-              <Pencil size={18}/> Přímka
-            </button>
-            <button 
-              onClick={() => setTool('circle')}
-              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
-                tool === 'circle' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Kružnice - Střed a bod na kružnici"
-            >
-              <Circle size={18}/> Kružnice
-            </button>
-            <button 
-              onClick={() => setTool('rubber')}
-              className={`px-3 py-2 rounded flex items-center gap-2 transition-colors ${
-                tool === 'rubber' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Guma - Smazání objektu"
-            >
-              <Eraser size={18}/> Guma
-            </button>
-            <button 
-              onClick={() => setRenameMode(v => !v)}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                renameMode ? 'bg-teal-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-              title="Přejmenovat bod (klikněte na bod)"
-            >
-              ✎ Název bodu
-            </button>
-            
-            <div className="border-l-2 border-gray-300 mx-2"></div>
-            
-            <button 
-              onClick={toggleRuler}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                rulerVisible ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Ruler size={18}/> Pravítko
-            </button>
-            <button 
-              onClick={toggleTriangle}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                triangleVisible ? 'bg-purple-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Triangle size={18}/> Trojúhelník
-            </button>
-            <button 
-              onClick={toggleProtractor}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                protractorVisible ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Gauge size={18}/> Úhloměr
-            </button>
+          <div className="mb-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-md">
+            {/* First Row: Drawing Tools & Physical Tools */}
+            <div className="flex flex-wrap items-center gap-2.5 p-4 border-b border-gray-200 bg-white/50 rounded-t-xl">
+              {/* Drawing Tools Section */}
+              <div className="flex items-center gap-2 pr-2 border-r border-gray-300">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2">Kreslení</span>
+                <button 
+                  onClick={() => setTool('mouse')}
+                  className={`px-3 py-2 rounded-md flex items-center gap-2 transition-all text-sm font-medium shadow-sm ${
+                    tool === 'mouse' ? 'bg-gray-700 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                  }`}
+                  title="Myš - Interakce s objekty bez vytváření"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+                    <path d="M13 13l6 6"/>
+                  </svg>
+                  Myš
+                </button>
+                <button 
+                  onClick={() => setTool('point')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'point' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-300'
+                  }`}
+                  title="Bod - Vytvoření bodu kliknutím"
+                >
+                  <Circle size={18}/> Bod
+                </button>
+                <button 
+                  onClick={() => setTool('segment')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'segment' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-300'
+                  }`}
+                  title="Úsečka - Klikněte na dva body"
+                >
+                  <Pencil size={18}/> Úsečka
+                </button>
+                <button 
+                  onClick={() => setTool('line')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'line' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-300'
+                  }`}
+                  title="Přímka - Klikněte na dva body"
+                >
+                  <Pencil size={18}/> Přímka
+                </button>
+                <button 
+                  onClick={() => setTool('circle')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'circle' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-300'
+                  }`}
+                  title="Kružnice - Střed a bod na kružnici"
+                >
+                  <Circle size={18}/> Kružnice
+                </button>
+              </div>
 
-            <div className="flex-1"></div>
+              {/* Editing Tools Section */}
+              <div className="flex items-center gap-2 pr-2 border-r border-gray-300">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2">Úpravy</span>
+                <button 
+                  onClick={() => setTool('rubber')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'rubber' ? 'bg-red-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-red-50 border border-gray-300'
+                  }`}
+                  title="Guma - Smazání objektu"
+                >
+                  <Eraser size={18}/> Guma
+                </button>
+                <button 
+                  onClick={() => setRenameMode(v => !v)}
+                  className={`px-3 py-2 rounded flex items-center gap-2 ${
+                    renameMode ? 'bg-teal-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-teal-50 border border-gray-300'
+                  }`}
+                  title="Přejmenovat bod (klikněte na bod)"
+                >
+                  ✎ Název bodu
+                </button>
+              </div>
+            
+              {/* Physical Tools Section */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2">Nástroje</span>
+                <button 
+                  onClick={toggleRuler}
+                  className={`px-3 py-2 rounded flex items-center gap-2 ${
+                    rulerVisible ? 'bg-yellow-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-yellow-50 border border-gray-300'
+                  }`}
+                  title="Pravítko - Měření vzdáleností"
+                >
+                  <Ruler size={18}/> Pravítko
+                </button>
+                <button 
+                  onClick={toggleTriangle}
+                  className={`px-3 py-2 rounded flex items-center gap-2 ${
+                    triangleVisible ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-purple-50 border border-gray-300'
+                  }`}
+                  title="Trojúhelník - Rýsování úhlů"
+                >
+                  <Triangle size={18}/> Trojúhelník
+                </button>
+                <button 
+                  onClick={toggleProtractor}
+                  className={`px-3 py-2 rounded flex items-center gap-2 ${
+                    protractorVisible ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-orange-50 border border-gray-300'
+                  }`}
+                  title="Úhloměr - Měření úhlů"
+                >
+                  <Gauge size={18}/> Úhloměr
+                </button>
+              </div>
+            </div>
 
-            <button 
-              onClick={undoLast} 
-              disabled={!canUndoState}
-              className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
-              title="Zpět (Ctrl/Cmd + Z)"
-            >
-              <RotateCcw size={18}/> Zpět
+            {/* Second Row: History & File Operations */}
+            <div className="flex flex-wrap items-center gap-2.5 p-4 bg-white/30 rounded-b-xl">
+              <button 
+                onClick={undoLast} 
+                disabled={!canUndoState}
+                className="px-3.5 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md"
+                title="Zpět (Ctrl/Cmd + Z)"
+              >
+              <RotateCcw size={16}/> Zpět
             </button>
             <button 
               onClick={redoLast} 
               disabled={!canRedoState}
-              className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              className="px-3.5 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md"
               title="Znovu (Ctrl/Cmd + Shift + Z)"
             >
-              <RotateCw size={18}/> Znovu
+              <RotateCw size={16}/> Znovu
             </button>
-            <button onClick={clearAll} className="px-3 py-2 rounded bg-red-500 text-white hover:bg-red-600 flex items-center gap-2">
-              <Trash2 size={18}/> Vymazat
+            <button onClick={clearAll} className="px-3.5 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md">
+              <Trash2 size={16}/> Vymazat
             </button>
-            <button onClick={saveConstruction} className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700 flex items-center gap-2">
-              <Save size={18}/> Uložit
+            <button onClick={saveConstruction} className="px-3.5 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md">
+              <Save size={16}/> Uložit
             </button>
-            <button onClick={exportConstruction} disabled={!data} className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors" title="Exportovat jako JSON">
-              <Download size={18}/> Export
+            <button onClick={exportConstruction} disabled={!data} className="px-3.5 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md" title="Exportovat jako JSON">
+              <Download size={16}/> Export
             </button>
-            <button onClick={exportAsImage} className="px-3 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-2 transition-colors" title="Exportovat jako obrázek (PNG)">
-              <Camera size={18}/> Obrázek
-            </button>
-            <label className="px-3 py-2 rounded bg-purple-600 text-white hover:bg-purple-700 cursor-pointer flex items-center gap-2">
-              <Upload size={18}/> Import
+            <label className="px-3.5 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 cursor-pointer flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md">
+              <Upload size={16}/> Import
               <input
                 type="file"
                 accept=".json"
@@ -1051,9 +993,10 @@ export default function GeneralGeometryTester() {
                 className="hidden"
               />
             </label>
-            <button onClick={loadConstruction} disabled={!data} className="px-3 py-2 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-              <Upload size={18}/> Načíst
+            <button onClick={loadConstruction} disabled={!data} className="px-3.5 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md">
+              <Upload size={16}/> Načíst
             </button>
+            </div>
           </div>
 
           <div className="relative">

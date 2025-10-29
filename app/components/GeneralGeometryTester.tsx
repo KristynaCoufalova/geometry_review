@@ -7,6 +7,7 @@ import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
 import { UndoRedoManager } from '../../lib/undo-redo'
+import { GridManager, GridMode } from '../../lib/grid-manager'
 
 type JBoard = JXG.Board & { renderer: any }
 
@@ -22,6 +23,7 @@ export default function GeneralGeometryTester() {
   const boardRef = useRef<JBoard | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const undoRedoRef = useRef<UndoRedoManager | null>(null)
+  const gridMgrRef = useRef<GridManager | null>(null)
 
   const [tool, setTool] = useState<'mouse'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
   const [selected, setSelected] = useState<any[]>([])
@@ -47,7 +49,7 @@ export default function GeneralGeometryTester() {
   
   // Grid settings state
   const [showSettings, setShowSettings] = useState(false)
-  const [gridOption, setGridOption] = useState<'none' | 'major' | 'major-minor'>('major')
+  const [gridOption, setGridOption] = useState<GridMode>('major')
 
   const toolRef = useRef(tool)
   const selectedRef = useRef(selected)
@@ -127,8 +129,15 @@ export default function GeneralGeometryTester() {
     if (existing) return existing
 
     // create point directly but also record it in history
+    const snap = gridOption !== 'none'
     const pt = brd.create('point', [xy.x, xy.y], {
-      name: '', size: 2, strokeColor: '#444', fillColor: '#666'
+      name: '', 
+      size: 2, 
+      strokeColor: '#444', 
+      fillColor: '#666',
+      snapToGrid: snap,
+      snapSizeX: 0.5,
+      snapSizeY: 0.5
     })
     ;(pt as any)._rawName = ''
     
@@ -141,16 +150,23 @@ export default function GeneralGeometryTester() {
     }
     
     return pt
-  }, [])
+  }, [gridOption])
 
   const createPointSmart = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
+    const snap = gridOption !== 'none'
     const pt = brd.create('point', [xy.x, xy.y], {
-      name: '', size: 2, strokeColor: '#444', fillColor: '#666'
+      name: '', 
+      size: 2, 
+      strokeColor: '#444', 
+      fillColor: '#666',
+      snapToGrid: snap,
+      snapSizeX: 0.5,
+      snapSizeY: 0.5
     })
     ;(pt as any)._rawName = ''
     pushCreated(pt)
     return pt
-  }, [])
+  }, [gridOption])
 
   const handleClick = useCallback((brd: JBoard, e: any) => {
     if (uiBusyRef.current) return
@@ -361,33 +377,50 @@ export default function GeneralGeometryTester() {
     if (!containerRef.current) return
 
     const brd = JXG.JSXGraph.initBoard(containerRef.current, {
-      boundingbox: [-1, 8, 11, -1], 
+      boundingbox: [-1, 8, 11, -1],
       axis: false,
-      showNavigation: false, 
+      showNavigation: false,
       showCopyright: false,
-      grid: gridOption !== 'none',
+      grid: false,           // we'll manage grids ourselves
       pan: { enabled: false },
       zoom: false,
       keepaspectratio: true
     }) as JBoard
-    
-    boardRef.current = brd
 
-    // Initialize the standalone undo/redo system
+    boardRef.current = brd
+    gridMgrRef.current = new GridManager(brd, containerRef.current)
+
+    // Optional: global snap-to-grid defaults for points
+    // (You can still override per element in your creators.)
+    JXG.Options.point.snapToGrid = true
+    JXG.Options.point.snapSizeX = 0.5
+    JXG.Options.point.snapSizeY = 0.5
+
+    // Init undo/redo
     undoRedoRef.current = new UndoRedoManager({
       board: brd,
       onFeedback: setFeedback,
       EPS: EPS
     })
 
+    // First grid application
+    gridMgrRef.current.setMode(gridOption)
+
+    // If you ever enable resize/pan/zoom, keep the dot grid in sync:
+    // brd.on('boundingbox', () => gridMgrRef.current?.sync())
+
     return () => {
-      try { 
-        JXG.JSXGraph.freeBoard(brd) 
-      } catch {}
+      try { JXG.JSXGraph.freeBoard(brd) } catch {}
       boardRef.current = null
       undoRedoRef.current = null
+      gridMgrRef.current = null
     }
-  }, [gridOption]) // Recreate board when grid option changes
+  }, [gridOption])  // <-- include gridOption for initial setup
+
+  // When user changes the option, just update the grid manager
+  useEffect(() => {
+    gridMgrRef.current?.setMode(gridOption)
+  }, [gridOption])
 
   // Close settings dropdown when clicking outside
   useEffect(() => {
@@ -826,6 +859,17 @@ export default function GeneralGeometryTester() {
                     </button>
                     <button
                       onClick={() => {
+                        setGridOption('minor')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'minor' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
+                    >
+                      Vedlejší mřížka
+                    </button>
+                    <button
+                      onClick={() => {
                         setGridOption('major-minor')
                         setShowSettings(false)
                       }}
@@ -834,6 +878,17 @@ export default function GeneralGeometryTester() {
                       }`}
                     >
                       Hlavní a vedlejší mřížka
+                    </button>
+                    <button
+                      onClick={() => {
+                        setGridOption('dot')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'dot' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
+                    >
+                      Bodová mřížka
                     </button>
                   </div>
                 </div>

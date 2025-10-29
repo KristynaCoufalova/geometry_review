@@ -1220,11 +1220,6 @@ export default function GeneralGeometryTester() {
             </div>
           </div>
 
-          <div className="mt-4 p-3 bg-blue-50 border-l-4 border-blue-500 rounded-lg">
-            <p className="text-blue-700 text-sm">
-              <strong>Nápověda:</strong> Modrý bod = přesun • Zelený bod = otočení • Oranžový bod = změna velikosti
-            </p>
-          </div>
 
           {feedback && (
             <div className={`mt-4 p-4 rounded-lg ${

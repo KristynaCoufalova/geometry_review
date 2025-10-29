@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import JXG from 'jsxgraph'
-import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut, Download, Upload, Info } from 'lucide-react'
+import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut, Download, Upload, Info, Settings, ChevronUp } from 'lucide-react'
 import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
@@ -44,6 +44,10 @@ export default function GeneralGeometryTester() {
   // Point naming state
   const [renameMode, setRenameMode] = useState(false)
   const [selectedPointId, setSelectedPointId] = useState<string|null>(null)
+  
+  // Grid settings state
+  const [showSettings, setShowSettings] = useState(false)
+  const [gridOption, setGridOption] = useState<'none' | 'major' | 'major-minor'>('major')
 
   const toolRef = useRef(tool)
   const selectedRef = useRef(selected)
@@ -361,7 +365,7 @@ export default function GeneralGeometryTester() {
       axis: false,
       showNavigation: false, 
       showCopyright: false,
-      grid: true,
+      grid: gridOption !== 'none',
       pan: { enabled: false },
       zoom: false,
       keepaspectratio: true
@@ -383,7 +387,22 @@ export default function GeneralGeometryTester() {
       boardRef.current = null
       undoRedoRef.current = null
     }
-  }, []) // Only initialize once
+  }, [gridOption]) // Recreate board when grid option changes
+
+  // Close settings dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (showSettings && !target.closest('.settings-dropdown')) {
+        setShowSettings(false)
+      }
+    }
+
+    if (showSettings) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showSettings])
 
   // Update event handlers when rename mode changes
   useEffect(() => {
@@ -749,12 +768,84 @@ export default function GeneralGeometryTester() {
             </button>
           </div>
 
-          <div 
-            ref={containerRef} 
-            id="jxgbox" 
-            className="w-full border-2 border-gray-300 rounded-lg bg-white jxgbox relative" 
-            style={{ height: 500, touchAction: 'none' }} 
-          >
+          <div className="relative">
+            {/* Settings Button - positioned outside JSXGraph container */}
+            <div className="absolute top-2 right-2 z-50 settings-dropdown" style={{ zIndex: 9999 }}>
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="p-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg shadow-lg transition-colors"
+                title="Nastavení mřížky"
+                style={{ zIndex: 10000 }}
+              >
+                <Settings size={18} />
+              </button>
+              
+              {/* Settings Dropdown */}
+              {showSettings && (
+                <div className="absolute top-12 right-0 bg-white border border-gray-300 rounded-lg shadow-lg min-w-48 z-20" style={{ zIndex: 10001 }}>
+                  <div className="p-3 border-b border-gray-200">
+                    <div className="flex items-center gap-2 text-gray-700 font-medium">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 3h18v18H3z"/>
+                        <path d="M9 9h6v6H9z"/>
+                        <path d="M3 9h6"/>
+                        <path d="M15 9h6"/>
+                        <path d="M3 15h6"/>
+                        <path d="M15 15h6"/>
+                        <path d="M9 3v6"/>
+                        <path d="M9 15v6"/>
+                        <path d="M15 3v6"/>
+                        <path d="M15 15v6"/>
+                      </svg>
+                      Zobrazit mřížku
+                      <ChevronUp size={14} />
+                    </div>
+                  </div>
+                  <div className="py-1">
+                    <button
+                      onClick={() => {
+                        setGridOption('none')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'none' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
+                    >
+                      Žádná mřížka
+                    </button>
+                    <button
+                      onClick={() => {
+                        setGridOption('major')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'major' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
+                    >
+                      Hlavní mřížka
+                    </button>
+                    <button
+                      onClick={() => {
+                        setGridOption('major-minor')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'major-minor' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
+                    >
+                      Hlavní a vedlejší mřížka
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div 
+              ref={containerRef} 
+              id="jxgbox" 
+              className="w-full border-2 border-gray-300 rounded-lg bg-white jxgbox" 
+              style={{ height: 500, touchAction: 'none' }} 
+            >
             {/* Draggable Ruler */}
             {rulerVisible && (
               <DraggableRuler
@@ -806,6 +897,7 @@ export default function GeneralGeometryTester() {
                 onUiBusyChange={setUiBusy}
               />
             )}
+            </div>
           </div>
 
           <div className="mt-4 p-3 bg-blue-50 border-l-4 border-blue-500 rounded-lg">

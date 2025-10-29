@@ -54,39 +54,45 @@ export class UndoRedoManager {
   private onFeedback: ((message: string) => void) | undefined
   private EPS: number
   private dragStartPositions = new Map<string, { x: number; y: number; name: string }>()
+  private draggedPointId: string | null = null
   private txnDepth = 0
   private pendingOps: Operation[] = []
   private downHandler = (e: any) => {
     const under = this.board.getAllObjectsUnderMouse(e)
     const point = under.find((o: any) => o.elType === 'point' && !o.visProp?.fixed) as any
     if (point) {
+      this.draggedPointId = point.id
       this.dragStartPositions.set(point.id, {
         x: point.X(),
         y: point.Y(),
         name: (point as any)._rawName || ''
       })
+    } else {
+      this.draggedPointId = null
     }
   }
   private upHandler = (e: any) => {
-    const under = this.board.getAllObjectsUnderMouse(e)
-    const point = under.find((o: any) => o.elType === 'point' && !o.visProp?.fixed) as any
-    if (point) {
-      const startPos = this.dragStartPositions.get(point.id)
-      if (startPos) {
-        const endPos = { x: point.X(), y: point.Y(), name: (point as any)._rawName || '' }
-        
-        if (startPos.x !== endPos.x || startPos.y !== endPos.y || startPos.name !== endPos.name) {
-          const modifyOp: ModifyOp = {
-            kind: 'modify',
-            pointId: point.id,
-            before: startPos,
-            after: endPos
+    if (this.draggedPointId) {
+      const point = (this.board.objects as any)[this.draggedPointId]
+      if (point && point.elType === 'point') {
+        const startPos = this.dragStartPositions.get(this.draggedPointId)
+        if (startPos) {
+          const endPos = { x: point.X(), y: point.Y(), name: (point as any)._rawName || '' }
+          
+          if (startPos.x !== endPos.x || startPos.y !== endPos.y || startPos.name !== endPos.name) {
+            const modifyOp: ModifyOp = {
+              kind: 'modify',
+              pointId: this.draggedPointId,
+              before: startPos,
+              after: endPos
+            }
+            this.pushOperation(modifyOp)
           }
-          this.pushOperation(modifyOp)
+          
+          this.dragStartPositions.delete(this.draggedPointId)
         }
-        
-        this.dragStartPositions.delete(point.id)
       }
+      this.draggedPointId = null
     }
   }
 
@@ -482,12 +488,19 @@ export class UndoRedoManager {
         try {
           // Create a fresh copy of the operation to avoid stale IDs
           const freshOp = structuredClone(subOp)
-          // Clear any stale IDs so they get regenerated
-          if (freshOp.kind === 'create' || freshOp.kind === 'delete') {
-            delete freshOp._id
-            delete freshOp.pointIds
-          }
+          // Keep IDs intact - don't delete them
           this.performOperation(freshOp)
+          // Write back the realized IDs to the original operation
+          if (freshOp.kind === 'create' || freshOp.kind === 'delete') {
+            const freshOpTyped = freshOp as CreateOp | DeleteOp
+            const subOpTyped = subOp as CreateOp | DeleteOp
+            if (freshOpTyped._id !== undefined) {
+              subOpTyped._id = freshOpTyped._id
+            }
+            if (freshOpTyped.pointIds !== undefined) {
+              subOpTyped.pointIds = freshOpTyped.pointIds
+            }
+          }
         } catch (error) {
           console.error('Error executing bundled operation:', error, subOp)
           // Continue with other operations even if one fails
@@ -504,12 +517,19 @@ export class UndoRedoManager {
         try {
           // Create a fresh copy of the operation to avoid stale IDs
           const freshOp = structuredClone(subOp)
-          // Clear any stale IDs so they get regenerated
-          if (freshOp.kind === 'create' || freshOp.kind === 'delete') {
-            delete freshOp._id
-            delete freshOp.pointIds
-          }
+          // Keep IDs intact - don't delete them
           this.rollbackOperation(freshOp)
+          // Write back the realized IDs to the original operation
+          if (freshOp.kind === 'create' || freshOp.kind === 'delete') {
+            const freshOpTyped = freshOp as CreateOp | DeleteOp
+            const subOpTyped = subOp as CreateOp | DeleteOp
+            if (freshOpTyped._id !== undefined) {
+              subOpTyped._id = freshOpTyped._id
+            }
+            if (freshOpTyped.pointIds !== undefined) {
+              subOpTyped.pointIds = freshOpTyped.pointIds
+            }
+          }
         } catch (error) {
           console.error('Error rolling back bundled operation:', error, subOp)
           // Continue with other operations even if one fails

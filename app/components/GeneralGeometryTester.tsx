@@ -339,10 +339,9 @@ export default function GeneralGeometryTester() {
     const brd = boardRef.current
     if (!brd) return
 
-    // Clean old handlers
-    brd.off('down')
-    brd.off('up')
-    brd.off('dblclick')
+    // Store references to our specific handlers so we can remove them properly
+    let currentDownHandler: ((e: any) => void) | null = null
+    let currentUpHandler: ((e: any) => void) | null = null
 
     const CLICK_EPS = 0.12 // world units; tweak if needed
 
@@ -378,7 +377,7 @@ export default function GeneralGeometryTester() {
     }
 
     // 1) DOWN: if in rename mode and on a point, FREEZE it and arm rename
-    const downHandler = (e:any) => {
+    currentDownHandler = (e:any) => {
       if (uiBusyRef.current) return
 
       // If not in rename mode, pass through to normal drawing handler
@@ -407,7 +406,7 @@ export default function GeneralGeometryTester() {
     }
 
     // 2) UP: if we armed a point and movement was small → open prompt
-    const upHandler = (e:any) => {
+    currentUpHandler = (e:any) => {
       const arm = renameArmRef.current
       if (!arm.pt) return
 
@@ -429,11 +428,14 @@ export default function GeneralGeometryTester() {
       downPosRef.current = null
     }
 
-    brd.on('down', downHandler)
-    brd.on('up', upHandler)
+    brd.on('down', currentDownHandler)
+    brd.on('up', currentUpHandler)
 
     return () => {
-      try { brd.off('down', downHandler); brd.off('up', upHandler) } catch {}
+      try { 
+        if (currentDownHandler) brd.off('down', currentDownHandler)
+        if (currentUpHandler) brd.off('up', currentUpHandler)
+      } catch {}
     }
   }, [renameMode, renamePoint])
 

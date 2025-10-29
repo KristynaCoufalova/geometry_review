@@ -188,9 +188,9 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
           userId = authUser.id
           console.debug('Using authenticated user:', authUser.email, 'ID:', authUser.id)
         } else if (studentId === 'anonymous') {
-          // For anonymous users, we'll use a fallback approach
-          userId = 'anonymous-user-' + Date.now()
-          console.debug('Using anonymous fallback userId:', userId)
+          // For anonymous users, generate a proper UUID
+          userId = crypto.randomUUID()
+          console.debug('Using anonymous UUID userId:', userId)
         } else {
           // Use the provided studentId as-is (should be a valid UUID)
           userId = studentId
@@ -198,8 +198,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         }
         
         // Validate userId looks like a UUID before using it for sessions.user_id
-        // Allow authenticated users (real UUIDs) or anonymous fallback IDs
-        if (!userId || (typeof userId === 'string' && !/^[0-9a-fA-F-]{36}$/.test(userId) && !userId.startsWith('anonymous-user-'))) {
+        if (!userId || (typeof userId === 'string' && !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(userId))) {
           console.error('Invalid userId before creating session:', userId)
           throw new Error('Invalid userId for session creation')
         }

@@ -3313,17 +3313,16 @@ function QuestionBasedTester(param) {
                             userId = authUser.id;
                             console.debug('Using authenticated user:', authUser.email, 'ID:', authUser.id);
                         } else if (studentId === 'anonymous') {
-                            // For anonymous users, we'll use a fallback approach
-                            userId = 'anonymous-user-' + Date.now();
-                            console.debug('Using anonymous fallback userId:', userId);
+                            // For anonymous users, generate a proper UUID
+                            userId = crypto.randomUUID();
+                            console.debug('Using anonymous UUID userId:', userId);
                         } else {
                             // Use the provided studentId as-is (should be a valid UUID)
                             userId = studentId;
                             console.debug('Using provided studentId:', userId);
                         }
                         // Validate userId looks like a UUID before using it for sessions.user_id
-                        // Allow authenticated users (real UUIDs) or anonymous fallback IDs
-                        if (!userId || typeof userId === 'string' && !/^[0-9a-fA-F-]{36}$/.test(userId) && !userId.startsWith('anonymous-user-')) {
+                        if (!userId || typeof userId === 'string' && !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(userId)) {
                             console.error('Invalid userId before creating session:', userId);
                             throw new Error('Invalid userId for session creation');
                         }
@@ -4096,7 +4095,7 @@ function QuestionBasedTester(param) {
                         className: "animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 771,
+                        lineNumber: 770,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -4104,18 +4103,18 @@ function QuestionBasedTester(param) {
                         children: "Načítání úlohy..."
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 772,
+                        lineNumber: 771,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 770,
+                lineNumber: 769,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 769,
+            lineNumber: 768,
             columnNumber: 7
         }, this);
     }
@@ -4129,7 +4128,7 @@ function QuestionBasedTester(param) {
                         className: "h-12 w-12 text-red-500 mx-auto mb-4"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 782,
+                        lineNumber: 781,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -4137,7 +4136,7 @@ function QuestionBasedTester(param) {
                         children: error
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 783,
+                        lineNumber: 782,
                         columnNumber: 11
                     }, this),
                     onBack && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4146,18 +4145,18 @@ function QuestionBasedTester(param) {
                         children: "Zpět"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 785,
+                        lineNumber: 784,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 781,
+                lineNumber: 780,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 780,
+            lineNumber: 779,
             columnNumber: 7
         }, this);
     }
@@ -4172,7 +4171,7 @@ function QuestionBasedTester(param) {
                         children: "Úloha nebyla nalezena"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 801,
+                        lineNumber: 800,
                         columnNumber: 11
                     }, this),
                     onBack && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4181,18 +4180,18 @@ function QuestionBasedTester(param) {
                         children: "Zpět"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 803,
+                        lineNumber: 802,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 800,
+                lineNumber: 799,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 799,
+            lineNumber: 798,
             columnNumber: 7
         }, this);
     }
@@ -4218,14 +4217,14 @@ function QuestionBasedTester(param) {
                                                 size: 18
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 827,
+                                                lineNumber: 826,
                                                 columnNumber: 19
                                             }, this),
                                             "Zpět"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 823,
+                                        lineNumber: 822,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4235,7 +4234,7 @@ function QuestionBasedTester(param) {
                                                 children: question.title
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 832,
+                                                lineNumber: 831,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4248,7 +4247,7 @@ function QuestionBasedTester(param) {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 836,
+                                                        lineNumber: 835,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -4258,7 +4257,7 @@ function QuestionBasedTester(param) {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 837,
+                                                        lineNumber: 836,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -4268,7 +4267,7 @@ function QuestionBasedTester(param) {
                                                                 size: 14
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 839,
+                                                                lineNumber: 838,
                                                                 columnNumber: 21
                                                             }, this),
                                                             Math.floor(timeSpent / 60),
@@ -4277,25 +4276,25 @@ function QuestionBasedTester(param) {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 838,
+                                                        lineNumber: 837,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 835,
+                                                lineNumber: 834,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 831,
+                                        lineNumber: 830,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 821,
+                                lineNumber: 820,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4309,7 +4308,7 @@ function QuestionBasedTester(param) {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 846,
+                                        lineNumber: 845,
                                         columnNumber: 15
                                     }, this),
                                     attempt && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4322,19 +4321,19 @@ function QuestionBasedTester(param) {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 848,
+                                        lineNumber: 847,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 845,
+                                lineNumber: 844,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 820,
+                        lineNumber: 819,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4348,17 +4347,17 @@ function QuestionBasedTester(param) {
                                 children: (_question_prompt_md = question.prompt_md) !== null && _question_prompt_md !== void 0 ? _question_prompt_md : ''
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 858,
+                                lineNumber: 857,
                                 columnNumber: 15
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                            lineNumber: 857,
+                            lineNumber: 856,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 856,
+                        lineNumber: 855,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4382,27 +4381,27 @@ function QuestionBasedTester(param) {
                                                 d: "M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 873,
+                                                lineNumber: 872,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                 d: "M13 13l6 6"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 874,
+                                                lineNumber: 873,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 872,
+                                        lineNumber: 871,
                                         columnNumber: 15
                                     }, this),
                                     "Myš"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 866,
+                                lineNumber: 865,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4413,14 +4412,14 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 884,
+                                        lineNumber: 883,
                                         columnNumber: 15
                                     }, this),
                                     " Bod"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 878,
+                                lineNumber: 877,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4431,14 +4430,14 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 892,
+                                        lineNumber: 891,
                                         columnNumber: 15
                                     }, this),
                                     " Úsečka"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 886,
+                                lineNumber: 885,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4449,14 +4448,14 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 900,
+                                        lineNumber: 899,
                                         columnNumber: 15
                                     }, this),
                                     " Přímka"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 894,
+                                lineNumber: 893,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4467,14 +4466,14 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 908,
+                                        lineNumber: 907,
                                         columnNumber: 15
                                     }, this),
                                     " Kružnice"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 902,
+                                lineNumber: 901,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4485,21 +4484,21 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 916,
+                                        lineNumber: 915,
                                         columnNumber: 15
                                     }, this),
                                     " Guma"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 910,
+                                lineNumber: 909,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "border-l-2 border-gray-300 mx-2"
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 919,
+                                lineNumber: 918,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4510,14 +4509,14 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 927,
+                                        lineNumber: 926,
                                         columnNumber: 15
                                     }, this),
                                     " Pravítko"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 921,
+                                lineNumber: 920,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4528,14 +4527,14 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 935,
+                                        lineNumber: 934,
                                         columnNumber: 15
                                     }, this),
                                     " Trojúhelník"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 929,
+                                lineNumber: 928,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4546,21 +4545,21 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 943,
+                                        lineNumber: 942,
                                         columnNumber: 15
                                     }, this),
                                     " Úhloměr"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 937,
+                                lineNumber: 936,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "flex-1"
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 946,
+                                lineNumber: 945,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4571,14 +4570,14 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 949,
+                                        lineNumber: 948,
                                         columnNumber: 15
                                     }, this),
                                     " Zpět"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 948,
+                                lineNumber: 947,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4589,14 +4588,14 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 952,
+                                        lineNumber: 951,
                                         columnNumber: 15
                                     }, this),
                                     " Vymazat"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 951,
+                                lineNumber: 950,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4607,20 +4606,20 @@ function QuestionBasedTester(param) {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 955,
+                                        lineNumber: 954,
                                         columnNumber: 15
                                     }, this),
                                     " Uložit"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 954,
+                                lineNumber: 953,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 865,
+                        lineNumber: 864,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4643,7 +4642,7 @@ function QuestionBasedTester(param) {
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 967,
+                                lineNumber: 966,
                                 columnNumber: 15
                             }, this),
                             triangleVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableTriangle$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -4658,7 +4657,7 @@ function QuestionBasedTester(param) {
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 981,
+                                lineNumber: 980,
                                 columnNumber: 15
                             }, this),
                             protractorVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableProtractor$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -4672,13 +4671,13 @@ function QuestionBasedTester(param) {
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 996,
+                                lineNumber: 995,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 959,
+                        lineNumber: 958,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4690,19 +4689,19 @@ function QuestionBasedTester(param) {
                                     children: "Nápověda:"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                    lineNumber: 1011,
+                                    lineNumber: 1010,
                                     columnNumber: 15
                                 }, this),
                                 " Modrý bod = přesun • Zelený bod = otočení • Oranžový bod = změna velikosti"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                            lineNumber: 1010,
+                            lineNumber: 1009,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1009,
+                        lineNumber: 1008,
                         columnNumber: 11
                     }, this),
                     feedback && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4712,28 +4711,28 @@ function QuestionBasedTester(param) {
                             children: feedback
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                            lineNumber: 1019,
+                            lineNumber: 1018,
                             columnNumber: 15
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1016,
+                        lineNumber: 1015,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 818,
+                lineNumber: 817,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 817,
+            lineNumber: 816,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-        lineNumber: 816,
+        lineNumber: 815,
         columnNumber: 5
     }, this);
 }

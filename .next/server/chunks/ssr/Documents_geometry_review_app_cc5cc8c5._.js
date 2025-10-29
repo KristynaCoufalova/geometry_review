@@ -2915,910 +2915,12 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
     }, this);
 }
 }),
-"[project]/Documents/geometry_review/lib/undo-redo.ts [app-ssr] (ecmascript)", ((__turbopack_context__) => {
-"use strict";
-
-/**
- * Standalone Undo/Redo System for JSXGraph Geometry
- * 
- * This module provides a clean, isolated undo/redo system that can be easily
- * integrated into any JSXGraph-based geometry application.
- */ __turbopack_context__.s([
-    "UndoRedoManager",
-    ()=>UndoRedoManager
-]);
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/jsxgraph/src/index.js [app-ssr] (ecmascript)");
-;
-class UndoRedoManager {
-    board;
-    undoStack = [];
-    redoStack = [];
-    onFeedback;
-    EPS;
-    txnDepth = 0;
-    pendingOps = [];
-    suppressTracking = false;
-    moveStarts = new Map();
-    trackingInterval = null;
-    withinTol(a, b, tol = this.EPS) {
-        return Math.abs(a - b) <= tol;
-    }
-    withSuppressed(fn) {
-        const prev = this.suppressTracking;
-        this.suppressTracking = true;
-        try {
-            return fn();
-        } finally{
-            this.suppressTracking = prev;
-        }
-    }
-    constructor(config){
-        this.board = config.board;
-        this.onFeedback = config.onFeedback;
-        this.EPS = config.EPS || 0.03;
-        this.setupGlobalPointTracking();
-    }
-    // Public API
-    pushOperation(op) {
-        const frozen = structuredClone(op);
-        this.withSuppressed(()=>this.performOperation(frozen));
-        if (this.txnDepth > 0) {
-            this.pendingOps.push(frozen);
-        } else {
-            this.undoStack.push(frozen);
-            this.redoStack = []; // Clear redo stack on new operation
-        }
-    }
-    begin() {
-        this.txnDepth++;
-    }
-    commit() {
-        if (this.txnDepth === 0) return;
-        this.txnDepth--;
-        if (this.txnDepth > 0) return;
-        if (this.pendingOps.length === 0) return;
-        // compress: push a synthetic op that replays the batch
-        const bundle = structuredClone(this.pendingOps);
-        this.pendingOps = [];
-        this.undoStack.push({
-            kind: 'bundle',
-            ops: bundle
-        });
-        this.redoStack = [];
-    }
-    undo() {
-        if (this.undoStack.length === 0) return;
-        const op = this.undoStack.pop();
-        const frozen = structuredClone(op);
-        this.suppressTracking = true;
-        try {
-            this.rollbackOperation(frozen);
-        } finally{
-            this.suppressTracking = false;
-        }
-        this.redoStack.push(frozen);
-        this.board.update();
-        this.onFeedback?.('');
-    }
-    redo() {
-        if (this.redoStack.length === 0) return;
-        const op = this.redoStack.pop();
-        const frozen = structuredClone(op);
-        this.suppressTracking = true;
-        try {
-            this.performOperation(frozen);
-        } finally{
-            this.suppressTracking = false;
-        }
-        this.undoStack.push(frozen);
-        this.board.update();
-        this.onFeedback?.('');
-    }
-    canUndo() {
-        return this.undoStack.length > 0;
-    }
-    canRedo() {
-        return this.redoStack.length > 0;
-    }
-    clear() {
-        this.undoStack = [];
-        this.redoStack = [];
-    }
-    dispose() {
-        this.moveStarts.clear();
-        if (this.trackingInterval) {
-            clearInterval(this.trackingInterval);
-            this.trackingInterval = null;
-        }
-    }
-    setupGlobalPointTracking() {
-        // Attach tracking to all existing points
-        this.attachTrackingToAllPoints();
-        // Set up a periodic check to attach tracking to any new points
-        this.trackingInterval = setInterval(()=>{
-            this.attachTrackingToAllPoints();
-        }, 1000); // Check every second
-    }
-    attachTrackingToAllPoints() {
-        const objects = Object.values(this.board.objects);
-        for (const obj of objects){
-            if (obj?.elType === 'point' && !obj.visProp?.fixed) {
-                this.attachPointTracking(obj);
-            }
-        }
-    }
-    posOf(pt) {
-        return {
-            x: pt.X(),
-            y: pt.Y(),
-            name: pt._rawName || ''
-        };
-    }
-    definingPointsOf(obj) {
-        if (!obj) return [];
-        if (obj.elType === 'segment' || obj.elType === 'line') {
-            const a = obj.point1 || obj.A || obj.points?.[0];
-            const b = obj.point2 || obj.B || obj.points?.[1];
-            return [
-                a,
-                b
-            ].filter(Boolean);
-        }
-        if (obj.elType === 'circle') {
-            const c = obj.center || obj.points?.[0];
-            const p = obj.point2 || obj.points?.[1];
-            return [
-                c,
-                p
-            ].filter(Boolean);
-        }
-        return [];
-    }
-    attachPointTracking(pt) {
-        // Avoid double-binding
-        if (pt._undoRedoBound) return;
-        pt._undoRedoBound = true;
-        pt.on('down', ()=>{
-            if (this.suppressTracking) return;
-            this.moveStarts.set(pt.id, this.posOf(pt));
-        });
-        pt.on('up', ()=>{
-            if (this.suppressTracking) return;
-            const start = this.moveStarts.get(pt.id);
-            if (!start) return;
-            const end = this.posOf(pt);
-            const moved = !this.withinTol(start.x, end.x) || !this.withinTol(start.y, end.y) || start.name !== end.name;
-            if (moved) {
-                const op = {
-                    kind: 'modify',
-                    pointId: pt.id,
-                    before: start,
-                    after: end
-                };
-                this.pushOperation(op);
-            }
-            this.moveStarts.delete(pt.id);
-        });
-    }
-    attachShapeTracking(obj) {
-        // For segment/line/circle: record a BUNDLE of point moves
-        let before = null;
-        let pts = [];
-        const onDown = ()=>{
-            if (this.suppressTracking) return;
-            pts = this.definingPointsOf(obj);
-            if (pts.length === 0) return;
-            before = {};
-            for (const p of pts)before[p.id] = this.posOf(p);
-        };
-        const onUp = ()=>{
-            if (this.suppressTracking || !before || pts.length === 0) return;
-            const ops = [];
-            for (const p of pts){
-                const b = before[p.id];
-                if (!b) continue;
-                const a = this.posOf(p);
-                if (b.x !== a.x || b.y !== a.y || b.name !== a.name) {
-                    ops.push({
-                        kind: 'modify',
-                        pointId: p.id,
-                        before: b,
-                        after: a
-                    });
-                }
-            }
-            if (ops.length === 1 && ops[0]) {
-                this.pushOperation(ops[0]); // single move
-            } else if (ops.length > 1) {
-                this.pushOperation({
-                    kind: 'bundle',
-                    ops
-                }); // move both endpoints / center+radius
-            }
-            before = null;
-            pts = [];
-        };
-        obj.on('down', onDown);
-        obj.on('up', onUp);
-    }
-    findPointNear(xy, tol = this.EPS) {
-        const objs = Object.values(this.board.objects);
-        for (const o of objs){
-            if (o?.elType === 'point') {
-                const p = {
-                    x: o.X(),
-                    y: o.Y()
-                };
-                if (Math.hypot(p.x - xy.x, p.y - xy.y) <= tol) return o;
-            }
-        }
-        return null;
-    }
-    isJXGPoint(p) {
-        return !!(p && p.elType === 'point' && typeof p.X === 'function' && typeof p.Y === 'function' && p.board === this.board);
-    }
-    getPointByIdOrNear(prefId, xy, tol = this.EPS) {
-        if (prefId) {
-            const byId = this.board.objects[prefId];
-            if (byId?.elType === 'point') return byId;
-        }
-        // exact coordinate match first
-        for (const o of Object.values(this.board.objects)){
-            if (o?.elType === 'point' && o.X() === xy.x && o.Y() === xy.y) return o;
-        }
-        // then proximity
-        const nearPoint = this.findPointNear(xy, tol);
-        if (nearPoint) return nearPoint;
-        // If no point found, return null (will be handled by fallback in calling code)
-        return null;
-    }
-    ensurePoint(xy, attr = {
-        name: '',
-        size: 2,
-        strokeColor: '#444',
-        fillColor: '#666'
-    }) {
-        const existing = this.findPointNear(xy);
-        if (existing) {
-            this.attachPointTracking(existing);
-            return existing;
-        }
-        try {
-            const pt = this.board.create('point', [
-                xy.x,
-                xy.y
-            ], attr);
-            if (!this.isJXGPoint(pt)) throw new Error('Invalid point');
-            pt._rawName = attr?.name ?? '';
-            if (attr?.fixed !== undefined) pt.setAttribute({
-                fixed: attr.fixed
-            });
-            if (attr?.withLabel !== undefined) pt.setAttribute({
-                withLabel: attr.withLabel
-            });
-            // Attach move tracking to the new point
-            this.attachPointTracking(pt);
-            return pt;
-        } catch (error) {
-            console.error('Failed to create point:', error);
-            return null;
-        }
-    }
-    performOperation(op) {
-        if (op.kind === 'create') {
-            this.performCreate(op);
-        } else if (op.kind === 'delete') {
-            this.performDelete(op);
-        } else if (op.kind === 'modify') {
-            this.performModify(op);
-        } else if (op.kind === 'bundle') {
-            this.performBundle(op);
-        }
-    }
-    rollbackOperation(op) {
-        if (op.kind === 'create') {
-            this.rollbackCreate(op);
-        } else if (op.kind === 'delete') {
-            this.rollbackDelete(op);
-        } else if (op.kind === 'modify') {
-            this.rollbackModify(op);
-        } else if (op.kind === 'bundle') {
-            this.rollbackBundle(op);
-        }
-    }
-    performCreate(op) {
-        if (op.elType === 'point') {
-            const { x, y, attr } = op.payload;
-            const pt = this.ensurePoint({
-                x,
-                y
-            }, attr);
-            if (!pt) return;
-            op._id = pt.id;
-            // Force board update to ensure point is created immediately
-            this.board.update();
-            return;
-        }
-        if (op.elType === 'segment' || op.elType === 'line') {
-            const { p1, p2, attr } = op.payload;
-            const a = this.getPointByIdOrNear(op.pointIds?.[0], p1) || this.ensurePoint(p1, attr);
-            const b = this.getPointByIdOrNear(op.pointIds?.[1], p2) || this.ensurePoint(p2, attr);
-            // If either isn't a real JSXGraph point, fall back to coordinate parents
-            const useCoords = !(this.isJXGPoint(a) && this.isJXGPoint(b));
-            const parents = useCoords ? [
-                [
-                    p1.x,
-                    p1.y
-                ],
-                [
-                    p2.x,
-                    p2.y
-                ]
-            ] : [
-                a,
-                b
-            ];
-            try {
-                const el = this.board.create(op.elType, parents, attr);
-                op._id = el.id;
-                // capture actual point ids (works for both segment & line)
-                const pA = el.point1 || el.A || el.points?.[0];
-                const pB = el.point2 || el.B || el.points?.[1];
-                if (this.isJXGPoint(pA) && this.isJXGPoint(pB)) {
-                    op.pointIds = [
-                        pA.id,
-                        pB.id
-                    ];
-                    // Attach tracking to the endpoint points if they don't have it yet
-                    this.attachPointTracking(pA);
-                    this.attachPointTracking(pB);
-                }
-                // Attach shape tracking to the element itself
-                this.attachShapeTracking(el);
-                // Force board update to ensure object is created immediately
-                this.board.update();
-            } catch (e) {
-                console.error(`Failed to create ${op.elType}:`, e, {
-                    parents
-                });
-            }
-            return;
-        }
-        if (op.elType === 'circle') {
-            const { center, on, attr } = op.payload;
-            const c = this.getPointByIdOrNear(op.pointIds?.[0], center) || this.ensurePoint(center, attr);
-            const p = this.getPointByIdOrNear(op.pointIds?.[1], on) || this.ensurePoint(on, attr);
-            const useCoords = !(this.isJXGPoint(c) && this.isJXGPoint(p));
-            const parents = useCoords ? [
-                [
-                    center.x,
-                    center.y
-                ],
-                [
-                    on.x,
-                    on.y
-                ]
-            ] : [
-                c,
-                p
-            ];
-            try {
-                const el = this.board.create('circle', parents, attr);
-                op._id = el.id;
-                const pc = el.center || el.points?.[0];
-                const pp = el.point2 || el.points?.[1];
-                if (this.isJXGPoint(pc) && this.isJXGPoint(pp)) {
-                    op.pointIds = [
-                        pc.id,
-                        pp.id
-                    ];
-                    // Attach tracking to the center and on-point if they don't have it yet
-                    this.attachPointTracking(pc);
-                    this.attachPointTracking(pp);
-                }
-                // Attach shape tracking to the circle element itself
-                this.attachShapeTracking(el);
-                // Force board update to ensure object is created immediately
-                this.board.update();
-            } catch (e) {
-                console.error('Failed to create circle:', e, {
-                    parents
-                });
-            }
-            return;
-        }
-    }
-    rollbackCreate(op) {
-        if (!op._id) return;
-        const obj = this.board.objects[op._id];
-        if (obj) {
-            try {
-                this.board.removeObject(obj);
-            } catch (error) {
-                console.error('Failed to remove object:', error, op._id);
-            }
-        } else {
-            // Try to find and remove by matching definition as fallback
-            this.removeByMatchingDefinition({
-                kind: 'delete',
-                elType: op.elType,
-                payload: op.payload,
-                _id: op._id,
-                pointIds: op.pointIds || []
-            });
-        }
-        // Remove associated points if they're not used elsewhere
-        if (op.pointIds && (op.elType === 'segment' || op.elType === 'line' || op.elType === 'circle')) {
-            op.pointIds.forEach((pointId)=>{
-                const pointObj = this.board.objects[pointId];
-                if (pointObj && !this.isPointUsedElsewhere(pointId, pointObj)) {
-                    try {
-                        this.board.removeObject(pointObj);
-                    } catch (error) {
-                        console.error('Failed to remove point:', error, pointId);
-                    }
-                }
-            });
-        }
-    }
-    performDelete(op) {
-        if (op._id) {
-            const target = this.board.objects[op._id];
-            if (target) {
-                this.board.removeObject(target);
-                // Force board update to ensure object is removed immediately
-                this.board.update();
-            }
-        } else {
-            // If _id is missing, try to find and remove by matching defining points and attributes
-            this.removeByMatchingDefinition(op);
-            // Force board update after removing by matching
-            this.board.update();
-        }
-        // Remove associated points if they're not used elsewhere
-        if (op.pointIds && (op.elType === 'segment' || op.elType === 'line' || op.elType === 'circle')) {
-            op.pointIds.forEach((pointId)=>{
-                const pointObj = this.board.objects[pointId];
-                if (pointObj && !this.isPointUsedElsewhere(pointId, pointObj)) {
-                    this.board.removeObject(pointObj);
-                }
-            });
-            // Force board update after removing points
-            this.board.update();
-        }
-    }
-    removeByMatchingDefinition(op) {
-        const objects = Object.values(this.board.objects);
-        for (const obj of objects){
-            if (obj.elType !== op.elType) continue;
-            let matches = false;
-            if (op.elType === 'point') {
-                const { x, y } = op.payload;
-                matches = Math.abs(obj.X() - x) < this.EPS && Math.abs(obj.Y() - y) < this.EPS;
-            } else if (op.elType === 'segment' || op.elType === 'line') {
-                const { p1, p2 } = op.payload;
-                const a = obj.point1 || obj.A || obj.points?.[0];
-                const b = obj.point2 || obj.B || obj.points?.[1];
-                if (a && b) {
-                    matches = Math.abs(a.X() - p1.x) < this.EPS && Math.abs(a.Y() - p1.y) < this.EPS && Math.abs(b.X() - p2.x) < this.EPS && Math.abs(b.Y() - p2.y) < this.EPS;
-                }
-            } else if (op.elType === 'circle') {
-                const { center, on } = op.payload;
-                const c = obj.center || obj.midpoint || obj.points?.[0];
-                const p = obj.point2 || obj.points?.[1];
-                if (c) {
-                    const centerMatches = Math.abs(c.X() - center.x) < this.EPS && Math.abs(c.Y() - center.y) < this.EPS;
-                    if (p) {
-                        matches = centerMatches && Math.abs(p.X() - on.x) < this.EPS && Math.abs(p.Y() - on.y) < this.EPS;
-                    } else {
-                        // For circles defined by center and radius
-                        const R = (typeof obj.R === 'function' ? obj.R() : obj.radius) ?? 1;
-                        const expectedRadius = Math.hypot(on.x - center.x, on.y - center.y);
-                        matches = centerMatches && Math.abs(R - expectedRadius) < this.EPS;
-                    }
-                }
-            }
-            if (matches) {
-                this.board.removeObject(obj);
-                break;
-            }
-        }
-    }
-    rollbackDelete(op) {
-        if (op.elType === 'point') {
-            const { x, y, attr } = op.payload;
-            const pt = this.ensurePoint({
-                x,
-                y
-            }, attr);
-            if (!pt) return;
-            op._id = pt.id;
-            // Force board update to ensure point is created immediately
-            this.board.update();
-            return;
-        }
-        if (op.elType === 'segment' || op.elType === 'line') {
-            const { p1, p2, attr } = op.payload;
-            const a = this.getPointByIdOrNear(op.pointIds?.[0], p1) || this.ensurePoint(p1, attr);
-            const b = this.getPointByIdOrNear(op.pointIds?.[1], p2) || this.ensurePoint(p2, attr);
-            const useCoords = !(this.isJXGPoint(a) && this.isJXGPoint(b));
-            const parents = useCoords ? [
-                [
-                    p1.x,
-                    p1.y
-                ],
-                [
-                    p2.x,
-                    p2.y
-                ]
-            ] : [
-                a,
-                b
-            ];
-            try {
-                const el = this.board.create(op.elType, parents, attr);
-                op._id = el.id;
-                const pA = el.point1 || el.A || el.points?.[0];
-                const pB = el.point2 || el.B || el.points?.[1];
-                if (this.isJXGPoint(pA) && this.isJXGPoint(pB)) {
-                    op.pointIds = [
-                        pA.id,
-                        pB.id
-                    ];
-                }
-                // Attach shape tracking to the recreated element
-                this.attachShapeTracking(el);
-                // Force board update to ensure object is created immediately
-                this.board.update();
-            } catch (e) {
-                console.error(`Failed to recreate ${op.elType}:`, e, {
-                    parents
-                });
-            }
-            return;
-        }
-        if (op.elType === 'circle') {
-            const { center, on, attr } = op.payload;
-            const c = this.getPointByIdOrNear(op.pointIds?.[0], center) || this.ensurePoint(center, attr);
-            const p = this.getPointByIdOrNear(op.pointIds?.[1], on) || this.ensurePoint(on, attr);
-            const useCoords = !(this.isJXGPoint(c) && this.isJXGPoint(p));
-            const parents = useCoords ? [
-                [
-                    center.x,
-                    center.y
-                ],
-                [
-                    on.x,
-                    on.y
-                ]
-            ] : [
-                c,
-                p
-            ];
-            try {
-                const el = this.board.create('circle', parents, attr);
-                op._id = el.id;
-                const pc = el.center || el.points?.[0];
-                const pp = el.point2 || el.points?.[1];
-                if (this.isJXGPoint(pc) && this.isJXGPoint(pp)) {
-                    op.pointIds = [
-                        pc.id,
-                        pp.id
-                    ];
-                }
-                // Attach shape tracking to the recreated circle element
-                this.attachShapeTracking(el);
-                // Force board update to ensure object is created immediately
-                this.board.update();
-            } catch (e) {
-                console.error('Failed to recreate circle:', e, {
-                    parents
-                });
-            }
-            return;
-        }
-    }
-    performModify(op) {
-        const pointObj = this.board.objects[op.pointId];
-        if (pointObj) {
-            // Use moveTo instead of setPosition to avoid draggable function issues
-            try {
-                pointObj.moveTo([
-                    op.after.x,
-                    op.after.y
-                ]);
-            } catch (e) {
-                // Fallback to direct coordinate setting
-                pointObj.coords.setCoordinates(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["default"].COORDS_BY_USER, [
-                    op.after.x,
-                    op.after.y
-                ]);
-                this.board.update();
-            }
-            this.setPointName(pointObj, op.after.name);
-        }
-    }
-    rollbackModify(op) {
-        const pointObj = this.board.objects[op.pointId];
-        if (pointObj) {
-            // Use moveTo instead of setPosition to avoid draggable function issues
-            try {
-                pointObj.moveTo([
-                    op.before.x,
-                    op.before.y
-                ]);
-            } catch (e) {
-                // Fallback to direct coordinate setting
-                pointObj.coords.setCoordinates(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["default"].COORDS_BY_USER, [
-                    op.before.x,
-                    op.before.y
-                ]);
-                this.board.update();
-            }
-            this.setPointName(pointObj, op.before.name);
-        }
-    }
-    performBundle(op) {
-        // Execute operations in forward order
-        for (const subOp of op.ops){
-            if (subOp) {
-                try {
-                    // Create a fresh copy of the operation to avoid stale IDs
-                    const freshOp = structuredClone(subOp);
-                    // Keep IDs intact - don't delete them
-                    this.performOperation(freshOp);
-                    // Write back the realized IDs to the original operation
-                    if (freshOp.kind === 'create' || freshOp.kind === 'delete') {
-                        const freshOpTyped = freshOp;
-                        const subOpTyped = subOp;
-                        if (freshOpTyped._id !== undefined) {
-                            subOpTyped._id = freshOpTyped._id;
-                        }
-                        if (freshOpTyped.pointIds !== undefined) {
-                            subOpTyped.pointIds = freshOpTyped.pointIds;
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error executing bundled operation:', error, subOp);
-                // Continue with other operations even if one fails
-                }
-            }
-        }
-        // Force board update after all bundle operations
-        this.board.update();
-    }
-    rollbackBundle(op) {
-        // Rollback operations in reverse order
-        for(let i = op.ops.length - 1; i >= 0; i--){
-            const subOp = op.ops[i];
-            if (subOp) {
-                try {
-                    // Create a fresh copy of the operation to avoid stale IDs
-                    const freshOp = structuredClone(subOp);
-                    // Keep IDs intact - don't delete them
-                    this.rollbackOperation(freshOp);
-                    // Write back the realized IDs to the original operation
-                    if (freshOp.kind === 'create' || freshOp.kind === 'delete') {
-                        const freshOpTyped = freshOp;
-                        const subOpTyped = subOp;
-                        if (freshOpTyped._id !== undefined) {
-                            subOpTyped._id = freshOpTyped._id;
-                        }
-                        if (freshOpTyped.pointIds !== undefined) {
-                            subOpTyped.pointIds = freshOpTyped.pointIds;
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error rolling back bundled operation:', error, subOp);
-                // Continue with other operations even if one fails
-                }
-            }
-        }
-        // Force board update after all bundle rollback operations
-        this.board.update();
-    }
-    setPointName(pointObj, name) {
-        const trimmed = (name || '').trim();
-        const pretty = this.toSubscript(trimmed);
-        pointObj.setAttribute({
-            name: pretty,
-            withLabel: !!trimmed
-        });
-        pointObj._rawName = trimmed;
-    }
-    toSubscript(name) {
-        const map = {
-            '0': '₀',
-            '1': '₁',
-            '2': '₂',
-            '3': '₃',
-            '4': '₄',
-            '5': '₅',
-            '6': '₆',
-            '7': '₇',
-            '8': '₈',
-            '9': '₉'
-        };
-        return name.replace(/_(\d+)/g, (_, d)=>d.split('').map((ch)=>map[ch] ?? ch).join(''));
-    }
-    isPointUsedElsewhere(pointId, pointObj) {
-        return Object.values(this.board.objects).some((otherObj)=>{
-            if (otherObj === pointObj || otherObj.id === pointId) return false;
-            if (otherObj.point1?.id === pointId || otherObj.point2?.id === pointId) return true;
-            if (otherObj.center?.id === pointId) return true;
-            if (otherObj.points && Array.isArray(otherObj.points)) {
-                return otherObj.points.some((p)=>p?.id === pointId);
-            }
-            return false;
-        });
-    }
-    // Helper methods for creating operations
-    createPointOperation(x, y, attr = {
-        name: '',
-        size: 2,
-        strokeColor: '#444',
-        fillColor: '#666'
-    }) {
-        return {
-            kind: 'create',
-            elType: 'point',
-            payload: {
-                x,
-                y,
-                attr
-            }
-        };
-    }
-    createSegmentOperation(p1, p2, attr) {
-        return {
-            kind: 'create',
-            elType: 'segment',
-            payload: {
-                p1,
-                p2,
-                attr
-            }
-        };
-    }
-    createLineOperation(p1, p2, attr) {
-        return {
-            kind: 'create',
-            elType: 'line',
-            payload: {
-                p1,
-                p2,
-                attr
-            }
-        };
-    }
-    createCircleOperation(center, on, attr) {
-        return {
-            kind: 'create',
-            elType: 'circle',
-            payload: {
-                center,
-                on,
-                attr
-            }
-        };
-    }
-    createDeleteOperation(obj) {
-        try {
-            const attr = this.getCommonAttr(obj);
-            if (obj.elType === 'point') {
-                return {
-                    kind: 'delete',
-                    elType: 'point',
-                    payload: {
-                        x: obj.X(),
-                        y: obj.Y(),
-                        attr
-                    },
-                    _id: obj.id
-                };
-            }
-            if (obj.elType === 'segment' || obj.elType === 'line') {
-                const a = obj.point1 || obj.A || obj.points?.[0];
-                const b = obj.point2 || obj.B || obj.points?.[1];
-                if (!a || !b) return null;
-                return {
-                    kind: 'delete',
-                    elType: obj.elType,
-                    payload: {
-                        p1: {
-                            x: a.X(),
-                            y: a.Y()
-                        },
-                        p2: {
-                            x: b.X(),
-                            y: b.Y()
-                        },
-                        attr
-                    },
-                    _id: obj.id,
-                    pointIds: [
-                        a.id,
-                        b.id
-                    ]
-                };
-            }
-            if (obj.elType === 'circle') {
-                const c = obj.center || obj.midpoint || obj.points?.[0];
-                const p = obj.point2 || obj.points?.[1];
-                const center = c ? {
-                    x: c.X(),
-                    y: c.Y()
-                } : {
-                    x: obj.center?.X?.() ?? 0,
-                    y: obj.center?.Y?.() ?? 0
-                };
-                let on;
-                if (p) {
-                    on = {
-                        x: p.X(),
-                        y: p.Y()
-                    };
-                } else {
-                    const R = (typeof obj.R === 'function' ? obj.R() : obj.radius) ?? 1;
-                    on = {
-                        x: center.x + R,
-                        y: center.y
-                    };
-                }
-                return {
-                    kind: 'delete',
-                    elType: 'circle',
-                    payload: {
-                        center,
-                        on,
-                        attr
-                    },
-                    _id: obj.id,
-                    pointIds: c && p ? [
-                        c.id,
-                        p.id
-                    ] : []
-                };
-            }
-        } catch  {
-            return null;
-        }
-        return null;
-    }
-    getCommonAttr(o) {
-        return {
-            name: o?._rawName ?? '',
-            withLabel: !!(o?.visProp?.withlabel || o?.visProp?.withLabel),
-            fixed: !!o?.visProp?.fixed,
-            size: o?.visProp?.size,
-            strokeColor: o?.visProp?.strokecolor ?? o?.visProp?.strokeColor,
-            strokeWidth: o?.visProp?.strokewidth ?? o?.visProp?.strokeWidth,
-            fillColor: o?.visProp?.fillcolor ?? o?.visProp?.fillColor,
-            dash: o?.visProp?.dash
-        };
-    }
-    // Helper methods for UI integration
-    fromBoardDeleteUnderMouse(e) {
-        const under = this.board.getAllObjectsUnderMouse(e);
-        const o = under.find((x)=>!x?.visProp?.fixed);
-        return o ? this.createDeleteOperation(o) : null;
-    }
-    createModifyOperation(pointId, before, after) {
-        return {
-            kind: 'modify',
-            pointId,
-            before,
-            after
-        };
-    }
-}
-}),
-"[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx [app-ssr] (ecmascript)", ((__turbopack_context__) => {
+"[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx [app-ssr] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
 
 __turbopack_context__.s([
     "default",
-    ()=>GeneralGeometryTester
+    ()=>GeometryConstructionTester
 ]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/next/dist/server/route-modules/app-page/vendored/ssr/react-jsx-dev-runtime.js [app-ssr] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/next/dist/server/route-modules/app-page/vendored/ssr/react.js [app-ssr] (ecmascript)");
@@ -3828,20 +2930,14 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Circle$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/circle.js [app-ssr] (ecmascript) <export default as Circle>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$pencil$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Pencil$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/pencil.js [app-ssr] (ecmascript) <export default as Pencil>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$rotate$2d$ccw$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__RotateCcw$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/rotate-ccw.js [app-ssr] (ecmascript) <export default as RotateCcw>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$rotate$2d$cw$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__RotateCw$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/rotate-cw.js [app-ssr] (ecmascript) <export default as RotateCw>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$eraser$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Eraser$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/eraser.js [app-ssr] (ecmascript) <export default as Eraser>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$ruler$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Ruler$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/ruler.js [app-ssr] (ecmascript) <export default as Ruler>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$triangle$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Triangle$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/triangle.js [app-ssr] (ecmascript) <export default as Triangle>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$gauge$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Gauge$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/gauge.js [app-ssr] (ecmascript) <export default as Gauge>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$download$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Download$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/download.js [app-ssr] (ecmascript) <export default as Download>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$upload$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Upload$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/upload.js [app-ssr] (ecmascript) <export default as Upload>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$info$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Info$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/info.js [app-ssr] (ecmascript) <export default as Info>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableRuler$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/app/components/DraggableRuler.tsx [app-ssr] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableTriangle$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx [app-ssr] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableProtractor$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx [app-ssr] (ecmascript)");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$undo$2d$redo$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/undo-redo.ts [app-ssr] (ecmascript)");
 'use client';
-;
 ;
 ;
 ;
@@ -3859,17 +2955,28 @@ function coordsOfPoint(p) {
         y: p.Y()
     };
 }
-function GeneralGeometryTester() {
+function pointOnLineXY(p, line, eps = EPS) {
+    const P = coordsOfPoint(line.point1);
+    const Q = coordsOfPoint(line.point2);
+    const A = Q.y - P.y, B = P.x - Q.x, C = -(A * P.x + B * P.y);
+    return Math.abs(A * p.x + B * p.y + C) / Math.hypot(A, B) < eps;
+}
+function hasEndpoints(seg, [P, Q], eps = EPS) {
+    const pts = [
+        coordsOfPoint(seg.point1),
+        coordsOfPoint(seg.point2)
+    ];
+    const d = (u, v)=>dist(u, v);
+    return d(pts[0], coordsOfPoint(P)) < eps && d(pts[1], coordsOfPoint(Q)) < eps || d(pts[1], coordsOfPoint(P)) < eps && d(pts[0], coordsOfPoint(Q)) < eps;
+}
+function GeometryConstructionTester() {
     const boardRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useRef"])(null);
     const containerRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useRef"])(null);
-    const undoRedoRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useRef"])(null);
     const [tool, setTool] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])('mouse');
     const [selected, setSelected] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])([]);
     const [feedback, setFeedback] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])('');
     const [data, setData] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(null);
     const [createdStack, setCreatedStack] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])([]);
-    const [showHelp, setShowHelp] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
-    const [constructionHistory, setConstructionHistory] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])([]);
     // Physical tools state
     const [rulerVisible, setRulerVisible] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
     const [triangleVisible, setTriangleVisible] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
@@ -3929,8 +3036,9 @@ function GeneralGeometryTester() {
     }, [
         renameMode
     ]);
+    const givensRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useRef"])(null);
     function pushCreated(obj) {
-        if (obj && typeof obj === 'object' && 'id' in obj) setCreatedStack((s)=>[
+        if (obj?.id) setCreatedStack((s)=>[
                 ...s,
                 obj.id
             ]);
@@ -3942,7 +3050,7 @@ function GeneralGeometryTester() {
             y: coords[1]
         };
     }
-    // 'A_12' -> 'A₁₂'
+    // "A_12" -> "A₁₂"
     function toSubscript(name) {
         const map = {
             '0': '₀',
@@ -3989,52 +3097,35 @@ function GeneralGeometryTester() {
         const pt = under.find((o)=>o.elType === 'point' && !o.visProp.fixed);
         return pt || null;
     }
-    // Helper function to get or create points via history system
-    const getOrCreatePointViaHistory = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useCallback"])((brd, xy)=>{
-        // try to reuse an existing non-fixed point near the coordinates
-        const objects = Object.values(brd.objects);
-        const existing = objects.find((o)=>{
-            if (o?.elType === 'point' && !o.visProp?.fixed) {
-                const p = {
-                    x: o.X(),
-                    y: o.Y()
-                };
-                return Math.hypot(p.x - xy.x, p.y - xy.y) <= EPS;
-            }
-            return false;
-        });
-        if (existing) return existing;
-        // create point directly but also record it in history
-        const pt = brd.create('point', [
-            xy.x,
-            xy.y
-        ], {
-            name: '',
-            size: 2,
-            strokeColor: '#444',
-            fillColor: '#666'
-        });
-        pt._rawName = '';
-        // Also create a history operation for this point
-        const attr = {
-            name: '',
-            size: 2,
-            strokeColor: '#444',
-            fillColor: '#666'
-        };
-        const op = undoRedoRef.current?.createPointOperation(xy.x, xy.y, attr);
-        if (op) {
-            op._id = pt.id;
-            undoRedoRef.current.pushOperation(op);
-        }
-        return pt;
-    }, []);
     const createPointSmart = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useCallback"])((brd, xy)=>{
+        const baseOpts = {
+            name: '',
+            size: 3,
+            strokeColor: '#e11d48',
+            fillColor: '#e11d48',
+            label: {
+                offset: [
+                    5,
+                    10
+                ]
+            }
+        };
+        const { q } = givensRef.current;
+        if (pointOnLineXY(xy, q, 0.15)) {
+            const glider = brd.create('glider', [
+                xy.x,
+                xy.y,
+                q
+            ], baseOpts);
+            glider._rawName = '';
+            pushCreated(glider);
+            return glider;
+        }
         const pt = brd.create('point', [
             xy.x,
             xy.y
         ], {
-            name: '',
+            ...baseOpts,
             size: 2,
             strokeColor: '#444',
             fillColor: '#666'
@@ -4075,184 +3166,105 @@ function GeneralGeometryTester() {
                 }
             case 'point':
                 {
-                    const attr = {
-                        name: '',
-                        size: 2,
-                        strokeColor: '#444',
-                        fillColor: '#666'
-                    };
-                    const op = undoRedoRef.current?.createPointOperation(xy.x, xy.y, attr);
-                    if (op) undoRedoRef.current?.pushOperation(op);
+                    createPointSmart(brd, xy);
                     setFeedback('Bod vytvořen');
                     break;
                 }
             case 'segment':
                 {
-                    const first = selectedRef.current[0];
-                    if (!first) {
-                        // first click
-                        undoRedoRef.current?.begin();
-                        const p = getOrCreatePointViaHistory(brd, xy);
-                        if (!p) {
-                            undoRedoRef.current?.commit();
-                            break;
-                        }
-                        setSelected([
+                    let p = nearestFreePoint(brd, e);
+                    if (!p) p = createPointSmart(brd, xy);
+                    setSelected((prev)=>{
+                        const arr = [
+                            ...prev,
                             p
-                        ]);
-                        setFeedback('Klikněte na druhý bod');
-                        break;
-                    }
-                    // second click
-                    const a = first;
-                    const b = getOrCreatePointViaHistory(brd, xy);
-                    if (!b) {
-                        undoRedoRef.current?.commit();
-                        setSelected([]);
-                        break;
-                    }
-                    const p1 = {
-                        x: a.X(),
-                        y: a.Y()
-                    };
-                    const p2 = {
-                        x: b.X(),
-                        y: b.Y()
-                    };
-                    const attr = {
-                        strokeColor: '#2563eb',
-                        strokeWidth: 2
-                    };
-                    const op = undoRedoRef.current?.createSegmentOperation(p1, p2, attr);
-                    if (op) {
-                        op.pointIds = [
-                            a.id,
-                            b.id
-                        ]; // <-- bind exact endpoints
-                        undoRedoRef.current?.pushOperation(op);
-                    }
-                    undoRedoRef.current?.commit();
-                    setSelected([]);
-                    setFeedback('Úsečka vytvořena');
+                        ];
+                        if (arr.length === 1) {
+                            setFeedback('Klikněte na druhý bod');
+                        } else if (arr.length === 2) {
+                            const seg = brd.create('segment', [
+                                arr[0],
+                                arr[1]
+                            ], {
+                                strokeColor: '#2563eb',
+                                strokeWidth: 2
+                            });
+                            pushCreated(seg);
+                            setFeedback('Úsečka vytvořena');
+                            return [];
+                        }
+                        return arr;
+                    });
                     break;
                 }
             case 'line':
                 {
-                    const first = selectedRef.current[0];
-                    if (!first) {
-                        undoRedoRef.current?.begin();
-                        const p = getOrCreatePointViaHistory(brd, xy);
-                        if (!p) {
-                            undoRedoRef.current?.commit();
-                            break;
-                        }
-                        setSelected([
+                    let p = nearestFreePoint(brd, e);
+                    if (!p) p = createPointSmart(brd, xy);
+                    setSelected((prev)=>{
+                        const arr = [
+                            ...prev,
                             p
-                        ]);
-                        setFeedback('Klikněte na druhý bod');
-                        break;
-                    }
-                    const a = first;
-                    const b = getOrCreatePointViaHistory(brd, xy);
-                    if (!b) {
-                        undoRedoRef.current?.commit();
-                        setSelected([]);
-                        break;
-                    }
-                    const p1 = {
-                        x: a.X(),
-                        y: a.Y()
-                    };
-                    const p2 = {
-                        x: b.X(),
-                        y: b.Y()
-                    };
-                    const attr = {
-                        strokeColor: '#059669',
-                        strokeWidth: 1,
-                        dash: 1
-                    };
-                    const op = undoRedoRef.current?.createLineOperation(p1, p2, attr);
-                    if (op) {
-                        op.pointIds = [
-                            a.id,
-                            b.id
                         ];
-                        undoRedoRef.current?.pushOperation(op);
-                    }
-                    undoRedoRef.current?.commit();
-                    setSelected([]);
-                    setFeedback('Přímka vytvořena');
+                        if (arr.length === 1) {
+                            setFeedback('Klikněte na druhý bod');
+                        } else if (arr.length === 2) {
+                            const line = brd.create('line', [
+                                arr[0],
+                                arr[1]
+                            ], {
+                                strokeColor: '#059669',
+                                strokeWidth: 1,
+                                dash: 1
+                            });
+                            pushCreated(line);
+                            setFeedback('Přímka vytvořena');
+                            return [];
+                        }
+                        return arr;
+                    });
                     break;
                 }
             case 'circle':
                 {
-                    const first = selectedRef.current[0];
-                    if (!first) {
-                        undoRedoRef.current?.begin();
-                        const c = getOrCreatePointViaHistory(brd, xy);
-                        if (!c) {
-                            undoRedoRef.current?.commit();
-                            break;
-                        }
-                        setSelected([
-                            c
-                        ]);
-                        setFeedback('Klikněte na bod na kružnici');
-                        break;
-                    }
-                    const c = first;
-                    const p = getOrCreatePointViaHistory(brd, xy);
-                    if (!p) {
-                        undoRedoRef.current?.commit();
-                        setSelected([]);
-                        break;
-                    }
-                    const center = {
-                        x: c.X(),
-                        y: c.Y()
-                    };
-                    const on = {
-                        x: p.X(),
-                        y: p.Y()
-                    };
-                    const attr = {
-                        strokeColor: '#dc2626',
-                        strokeWidth: 2
-                    };
-                    const op = undoRedoRef.current?.createCircleOperation(center, on, attr);
-                    if (op) {
-                        op.pointIds = [
-                            c.id,
-                            p.id
+                    let p = nearestFreePoint(brd, e);
+                    if (!p) p = createPointSmart(brd, xy);
+                    setSelected((prev)=>{
+                        const arr = [
+                            ...prev,
+                            p
                         ];
-                        undoRedoRef.current?.pushOperation(op);
-                    }
-                    undoRedoRef.current?.commit();
-                    setSelected([]);
-                    setFeedback('Kružnice vytvořena');
+                        if (arr.length === 1) {
+                            setFeedback('Klikněte na bod na kružnici');
+                        } else if (arr.length === 2) {
+                            const circ = brd.create('circle', [
+                                arr[0],
+                                arr[1]
+                            ], {
+                                strokeColor: '#dc2626',
+                                strokeWidth: 2
+                            });
+                            pushCreated(circ);
+                            setFeedback('Kružnice vytvořena');
+                            return [];
+                        }
+                        return arr;
+                    });
                     break;
                 }
             case 'rubber':
                 {
                     const under = brd.getAllObjectsUnderMouse(e);
-                    const toRemove = under.find((o)=>!o.visProp?.fixed);
+                    const toRemove = under.find((o)=>!o.visProp?.fixed && o.name !== 'S' && o.name !== 'C');
                     if (toRemove) {
-                        const delOp = undoRedoRef.current?.createDeleteOperation(toRemove);
-                        if (delOp) {
-                            undoRedoRef.current?.pushOperation(delOp);
-                            setFeedback('Objekt smazán');
-                        } else {
-                            // fallback: hard remove (won't be undoable)
-                            brd.removeObject(toRemove);
-                            setFeedback('Objekt smazán (bez historie)');
-                        }
+                        brd.removeObject(toRemove);
+                        setFeedback('Objekt smazán');
                     }
                     break;
                 }
         }
     }, [
-        getOrCreatePointViaHistory
+        createPointSmart
     ]);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useEffect"])(()=>{
         handleClickRef.current = handleClick;
@@ -4343,27 +3355,83 @@ function GeneralGeometryTester() {
             keepaspectratio: true
         });
         boardRef.current = brd;
-        // Initialize the standalone undo/redo system
-        undoRedoRef.current = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$undo$2d$redo$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["UndoRedoManager"]({
-            board: brd,
-            onFeedback: setFeedback,
-            EPS: EPS
+        // Givens
+        const q = brd.create('line', [
+            [
+                0,
+                7
+            ],
+            [
+                10,
+                7
+            ]
+        ], {
+            strokeColor: '#000',
+            strokeWidth: 2,
+            name: 'q',
+            withLabel: true,
+            fixed: true,
+            label: {
+                position: 'rt',
+                offset: [
+                    10,
+                    0
+                ]
+            }
         });
+        const S = brd.create('point', [
+            5,
+            5
+        ], {
+            name: 'S',
+            size: 3,
+            strokeColor: '#000',
+            fillColor: '#000',
+            fixed: true,
+            label: {
+                offset: [
+                    5,
+                    10
+                ]
+            }
+        });
+        const C = brd.create('point', [
+            4.5,
+            3
+        ], {
+            name: 'C',
+            size: 3,
+            strokeColor: '#000',
+            fillColor: '#000',
+            fixed: true,
+            label: {
+                offset: [
+                    5,
+                    -15
+                ]
+            }
+        });
+        givensRef.current = {
+            q,
+            S,
+            C
+        };
         return ()=>{
             try {
                 __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["default"].JSXGraph.freeBoard(brd);
             } catch  {}
             boardRef.current = null;
-            undoRedoRef.current = null;
+            givensRef.current = null;
         };
     }, []); // Only initialize once
     // Update event handlers when rename mode changes
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useEffect"])(()=>{
         const brd = boardRef.current;
         if (!brd) return;
-        // Store references to our specific handlers so we can remove them properly
-        let currentDownHandler = null;
-        let currentUpHandler = null;
+        // Clean old handlers
+        brd.off('down');
+        brd.off('up');
+        brd.off('dblclick');
         const CLICK_EPS = 0.12 // world units; tweak if needed
         ;
         const openPrompt = (pt, e)=>{
@@ -4397,9 +3465,9 @@ function GeneralGeometryTester() {
             downPosRef.current = null;
         };
         // 1) DOWN: if in rename mode and on a point, FREEZE it and arm rename
-        currentDownHandler = (e)=>{
+        const downHandler = (e)=>{
             if (uiBusyRef.current) return;
-            // If not in rename mode, pass through to normal drawing handler and let undo-redo system handle drags
+            // If not in rename mode, pass through to normal drawing handler
             if (!renameModeRef.current) {
                 if (handleClickRef.current) handleClickRef.current(brd, e);
                 return;
@@ -4419,14 +3487,14 @@ function GeneralGeometryTester() {
                 wasDraggable
             };
             downPosRef.current = getMouseCoords(brd, e);
-            // Only prevent default behavior in rename mode
+            // Kill default drag start
             if (e.originalEvent) {
                 e.originalEvent.stopPropagation();
                 e.originalEvent.preventDefault();
             }
         };
         // 2) UP: if we armed a point and movement was small → open prompt
-        currentUpHandler = (e)=>{
+        const upHandler = (e)=>{
             const arm = renameArmRef.current;
             if (!arm.pt) return;
             const up = getMouseCoords(brd, e);
@@ -4450,12 +3518,12 @@ function GeneralGeometryTester() {
             };
             downPosRef.current = null;
         };
-        brd.on('down', currentDownHandler);
-        brd.on('up', currentUpHandler);
+        brd.on('down', downHandler);
+        brd.on('up', upHandler);
         return ()=>{
             try {
-                if (currentDownHandler) brd.off('down', currentDownHandler);
-                if (currentUpHandler) brd.off('up', currentUpHandler);
+                brd.off('down', downHandler);
+                brd.off('up', upHandler);
             } catch  {}
         };
     }, [
@@ -4463,10 +3531,13 @@ function GeneralGeometryTester() {
         renamePoint
     ]);
     function undoLast() {
-        undoRedoRef.current?.undo();
-    }
-    function redoLast() {
-        undoRedoRef.current?.redo();
+        const brd = boardRef.current;
+        if (!brd || createdStack.length === 0) return;
+        const lastId = createdStack[createdStack.length - 1];
+        const obj = lastId ? brd.objects[lastId] : undefined;
+        if (obj) brd.removeObject(obj);
+        setCreatedStack((s)=>s.slice(0, -1));
+        setFeedback('');
     }
     function clearAll() {
         const brd = boardRef.current;
@@ -4474,7 +3545,7 @@ function GeneralGeometryTester() {
         const toRemove = [];
         for(const key in brd.objects){
             const o = brd.objects[key];
-            if (!o?.visProp?.fixed) {
+            if (!o?.visProp?.fixed && o.name !== 'S' && o.name !== 'C' && o.name !== 'q') {
                 toRemove.push(o);
             }
         }
@@ -4484,66 +3555,78 @@ function GeneralGeometryTester() {
         setData(null);
         setCreatedStack([]);
     }
+    function validateNow() {
+        const brd = boardRef.current;
+        const { q, S, C } = givensRef.current;
+        const pts = Object.values(brd.objects).filter((o)=>o.elType === 'point');
+        const getRaw = (p)=>p?._rawName ?? p?.name ?? '';
+        const A = pts.find((p)=>getRaw(p) === 'A');
+        const B = pts.find((p)=>getRaw(p) === 'B');
+        if (!A || !B) {
+            return {
+                passed: false,
+                message: 'Označte vrcholy A a B.',
+                score: 0
+            };
+        }
+        const AonQ = pointOnLineXY(coordsOfPoint(A), q, EPS);
+        const BonQ = pointOnLineXY(coordsOfPoint(B), q, EPS);
+        if (!(AonQ && BonQ)) {
+            return {
+                passed: false,
+                message: 'A i B musí ležet na přímce q.',
+                score: 1
+            };
+        }
+        const AC = dist(coordsOfPoint(A), coordsOfPoint(C));
+        const BC = dist(coordsOfPoint(B), coordsOfPoint(C));
+        const isIso = Math.abs(AC - BC) < EPS;
+        const SA = dist(coordsOfPoint(S), coordsOfPoint(A));
+        const SB = dist(coordsOfPoint(S), coordsOfPoint(B));
+        const SC = dist(coordsOfPoint(S), coordsOfPoint(C));
+        const midOnAC = Math.abs(SA - SC) < EPS;
+        const midOnBC = Math.abs(SB - SC) < EPS;
+        if (!(isIso && (midOnAC || midOnBC))) {
+            return {
+                passed: false,
+                message: 'Zkontrolujte: AC = BC a S je střed ramene.',
+                score: 2
+            };
+        }
+        const segs = Object.values(brd.objects).filter((o)=>o.elType === 'segment');
+        const hasAB = segs.some((s)=>hasEndpoints(s, [
+                A,
+                B
+            ]));
+        const hasAC = segs.some((s)=>hasEndpoints(s, [
+                A,
+                C
+            ]));
+        const hasBC = segs.some((s)=>hasEndpoints(s, [
+                B,
+                C
+            ]));
+        if (!(hasAB && hasAC && hasBC)) {
+            return {
+                passed: true,
+                message: 'Správně, ale chybí narýsované strany.',
+                score: 3
+            };
+        }
+        return {
+            passed: true,
+            message: '✅ Výborně! Podmínky splněny.',
+            score: 3
+        };
+    }
     function saveConstruction() {
         if (!boardRef.current) return;
-        const timestamp = new Date().toISOString();
-        const constructionData = {
-            timestamp,
-            objects: Object.values(boardRef.current.objects).map((obj)=>({
-                    id: obj.id,
-                    type: obj.elType,
-                    name: obj.name,
-                    properties: obj.visProp
-                })),
-            createdStack: [
-                ...createdStack
-            ]
-        };
-        setData(constructionData);
-        setConstructionHistory((prev)=>[
-                ...prev,
-                constructionData
-            ]);
-        setFeedback('Konstrukce uložena');
-    }
-    function exportConstruction() {
-        if (!data) return;
-        const dataStr = JSON.stringify(data, null, 2);
-        const dataBlob = new Blob([
-            dataStr
-        ], {
-            type: 'application/json'
+        const validation = validateNow();
+        setData({
+            validation,
+            timestamp: new Date().toISOString()
         });
-        const url = URL.createObjectURL(dataBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `construction_${new Date().toISOString().split('T')[0]}.json`;
-        link.click();
-        URL.revokeObjectURL(url);
-        setFeedback('Konstrukce exportována');
-    }
-    function importConstruction(event) {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e)=>{
-            try {
-                const importedData = JSON.parse(e.target?.result);
-                setData(importedData);
-                setFeedback('Konstrukce načtena - klikněte na "Načíst" pro obnovení');
-            } catch (err) {
-                setFeedback('Chyba při načítání souboru');
-            }
-        };
-        reader.readAsText(file);
-    }
-    function loadConstruction() {
-        if (!data || !boardRef.current) return;
-        // Clear current construction
-        clearAll();
-        // Restore objects from data
-        // This is a simplified restoration - in a real implementation you'd need more sophisticated logic
-        setFeedback('Konstrukce načtena');
+        setFeedback(validation.message);
     }
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "min-h-screen bg-gray-50 p-6",
@@ -4554,333 +3637,26 @@ function GeneralGeometryTester() {
                 children: [
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
                         className: "text-2xl font-bold text-gray-800 mb-4",
-                        children: "Obecné geometrické testování"
+                        children: "Úloha 9: Konstrukce trojúhelníku"
                     }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                        lineNumber: 581,
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 549,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "bg-green-50 border-l-4 border-green-500 p-4 mb-4",
-                        children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                className: "text-gray-700",
-                                children: "Volné testovací pole pro geometrické konstrukce. Můžete používat všechny dostupné nástroje bez specifických požadavků."
-                            }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 586,
-                                columnNumber: 13
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                className: "mt-2 flex items-center gap-2",
-                                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                                    onClick: ()=>setShowHelp(!showHelp),
-                                    className: "flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800",
-                                    children: [
-                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$info$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Info$3e$__["Info"], {
-                                            size: 14
-                                        }, void 0, false, {
-                                            fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                            lineNumber: 594,
-                                            columnNumber: 17
-                                        }, this),
-                                        showHelp ? 'Skrýt nápovědu' : 'Zobrazit nápovědu'
-                                    ]
-                                }, void 0, true, {
-                                    fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                    lineNumber: 590,
-                                    columnNumber: 15
-                                }, this)
-                            }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 589,
-                                columnNumber: 13
-                            }, this)
-                        ]
-                    }, void 0, true, {
-                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                        lineNumber: 585,
-                        columnNumber: 11
-                    }, this),
-                    showHelp && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "bg-blue-50 border-l-4 border-blue-500 p-4 mb-4",
-                        children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
-                                className: "font-semibold text-blue-800 mb-2",
-                                children: "Nápověda k nástrojům:"
-                            }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 602,
-                                columnNumber: 15
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                className: "grid md:grid-cols-2 gap-4 text-sm text-blue-700",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("h4", {
-                                                className: "font-medium mb-1",
-                                                children: "Základní nástroje:"
-                                            }, void 0, false, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                lineNumber: 605,
-                                                columnNumber: 19
-                                            }, this),
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("ul", {
-                                                className: "space-y-1",
-                                                children: [
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Myš:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 607,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Interakce s objekty bez vytváření"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 607,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Bod:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 608,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Vytvoření bodu kliknutím"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 608,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Úsečka:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 609,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Klikněte na dva body"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 609,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Přímka:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 610,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Klikněte na dva body"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 610,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Kružnice:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 611,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Střed a bod na kružnici"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 611,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Guma:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 612,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Smazání objektu"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 612,
-                                                        columnNumber: 21
-                                                    }, this)
-                                                ]
-                                            }, void 0, true, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                lineNumber: 606,
-                                                columnNumber: 19
-                                            }, this)
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 604,
-                                        columnNumber: 17
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("h4", {
-                                                className: "font-medium mb-1",
-                                                children: "Fyzické nástroje:"
-                                            }, void 0, false, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                lineNumber: 616,
-                                                columnNumber: 19
-                                            }, this),
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("ul", {
-                                                className: "space-y-1",
-                                                children: [
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Pravítko:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 618,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Měření vzdáleností"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 618,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Trojúhelník:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 619,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Rýsování úhlů"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 619,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Úhloměr:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 620,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Měření úhlů"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 620,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Modrý bod:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 621,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Přesun nástroje"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 621,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Zelený bod:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 622,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Otočení nástroje"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 622,
-                                                        columnNumber: 21
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
-                                                        children: [
-                                                            "• ",
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
-                                                                children: "Oranžový bod:"
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                                lineNumber: 623,
-                                                                columnNumber: 27
-                                                            }, this),
-                                                            " Změna velikosti"
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 623,
-                                                        columnNumber: 21
-                                                    }, this)
-                                                ]
-                                            }, void 0, true, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                lineNumber: 617,
-                                                columnNumber: 19
-                                            }, this)
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 615,
-                                        columnNumber: 17
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 603,
-                                columnNumber: 15
-                            }, this)
-                        ]
-                    }, void 0, true, {
-                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                        lineNumber: 601,
-                        columnNumber: 13
+                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                            className: "text-gray-700",
+                            children: "Sestrojte rovnoramenný trojúhelník ABC. Bod C je vrchol, S je střed ramene, AB leží na přímce q."
+                        }, void 0, false, {
+                            fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                            lineNumber: 554,
+                            columnNumber: 13
+                        }, this)
+                    }, void 0, false, {
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 553,
+                        columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "flex flex-wrap gap-2 mb-4 p-4 bg-gray-100 rounded-lg",
@@ -4902,28 +3678,28 @@ function GeneralGeometryTester() {
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                 d: "M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"
                                             }, void 0, false, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                lineNumber: 639,
+                                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                                lineNumber: 568,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                 d: "M13 13l6 6"
                                             }, void 0, false, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                lineNumber: 640,
+                                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                                lineNumber: 569,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 638,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 567,
                                         columnNumber: 15
                                     }, this),
                                     "Myš"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 632,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 561,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4933,15 +3709,15 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Circle$3e$__["Circle"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 650,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 579,
                                         columnNumber: 15
                                     }, this),
                                     " Bod"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 644,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 573,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4951,15 +3727,15 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$pencil$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Pencil$3e$__["Pencil"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 658,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 587,
                                         columnNumber: 15
                                     }, this),
                                     " Úsečka"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 652,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 581,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4969,15 +3745,15 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$pencil$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Pencil$3e$__["Pencil"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 666,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 595,
                                         columnNumber: 15
                                     }, this),
                                     " Přímka"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 660,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 589,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4987,15 +3763,15 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Circle$3e$__["Circle"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 674,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 603,
                                         columnNumber: 15
                                     }, this),
                                     " Kružnice"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 668,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 597,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5005,15 +3781,15 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$eraser$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Eraser$3e$__["Eraser"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 682,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 611,
                                         columnNumber: 15
                                     }, this),
                                     " Guma"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 676,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 605,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5022,15 +3798,15 @@ function GeneralGeometryTester() {
                                 title: "Přejmenovat bod (klikněte na bod)",
                                 children: "✎ Název bodu"
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 684,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 613,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "border-l-2 border-gray-300 mx-2"
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 694,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 623,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5040,15 +3816,15 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$ruler$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Ruler$3e$__["Ruler"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 702,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 631,
                                         columnNumber: 15
                                     }, this),
                                     " Pravítko"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 696,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 625,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5058,15 +3834,15 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$triangle$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Triangle$3e$__["Triangle"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 710,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 639,
                                         columnNumber: 15
                                     }, this),
                                     " Trojúhelník"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 704,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 633,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5076,22 +3852,22 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$gauge$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Gauge$3e$__["Gauge"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 718,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 647,
                                         columnNumber: 15
                                     }, this),
                                     " Úhloměr"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 712,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 641,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "flex-1"
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 721,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 650,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5101,33 +3877,15 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$rotate$2d$ccw$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__RotateCcw$3e$__["RotateCcw"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 724,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 653,
                                         columnNumber: 15
                                     }, this),
                                     " Zpět"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 723,
-                                columnNumber: 13
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                                onClick: redoLast,
-                                className: "px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-2",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$rotate$2d$cw$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__RotateCw$3e$__["RotateCw"], {
-                                        size: 18
-                                    }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 727,
-                                        columnNumber: 15
-                                    }, this),
-                                    " Znovu"
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 726,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 652,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5137,15 +3895,15 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$trash$2d$2$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Trash2$3e$__["Trash2"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 730,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 656,
                                         columnNumber: 15
                                     }, this),
                                     " Vymazat"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 729,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 655,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5155,86 +3913,21 @@ function GeneralGeometryTester() {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$save$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Save$3e$__["Save"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 733,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 659,
                                         columnNumber: 15
                                     }, this),
                                     " Uložit"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 732,
-                                columnNumber: 13
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                                onClick: exportConstruction,
-                                disabled: !data,
-                                className: "px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$download$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Download$3e$__["Download"], {
-                                        size: 18
-                                    }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 736,
-                                        columnNumber: 15
-                                    }, this),
-                                    " Export"
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 735,
-                                columnNumber: 13
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("label", {
-                                className: "px-3 py-2 rounded bg-purple-600 text-white hover:bg-purple-700 cursor-pointer flex items-center gap-2",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$upload$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Upload$3e$__["Upload"], {
-                                        size: 18
-                                    }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 739,
-                                        columnNumber: 15
-                                    }, this),
-                                    " Import",
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
-                                        type: "file",
-                                        accept: ".json",
-                                        onChange: importConstruction,
-                                        className: "hidden"
-                                    }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 740,
-                                        columnNumber: 15
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 738,
-                                columnNumber: 13
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                                onClick: loadConstruction,
-                                disabled: !data,
-                                className: "px-3 py-2 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$upload$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Upload$3e$__["Upload"], {
-                                        size: 18
-                                    }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 748,
-                                        columnNumber: 15
-                                    }, this),
-                                    " Načíst"
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 747,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 658,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
-                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                        lineNumber: 631,
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 560,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -5259,8 +3952,8 @@ function GeneralGeometryTester() {
                                 },
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 760,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 671,
                                 columnNumber: 15
                             }, this),
                             triangleVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableTriangle$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["default"], {
@@ -5277,8 +3970,8 @@ function GeneralGeometryTester() {
                                 },
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 777,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 688,
                                 columnNumber: 15
                             }, this),
                             protractorVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableProtractor$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["default"], {
@@ -5294,14 +3987,14 @@ function GeneralGeometryTester() {
                                 },
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 795,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 706,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
-                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                        lineNumber: 752,
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 663,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -5312,20 +4005,20 @@ function GeneralGeometryTester() {
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
                                     children: "Nápověda:"
                                 }, void 0, false, {
-                                    fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                    lineNumber: 813,
+                                    fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                    lineNumber: 724,
                                     columnNumber: 15
                                 }, this),
                                 " Modrý bod = přesun • Zelený bod = otočení • Oranžový bod = změna velikosti"
                             ]
                         }, void 0, true, {
-                            fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                            lineNumber: 812,
+                            fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                            lineNumber: 723,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                        lineNumber: 811,
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 722,
                         columnNumber: 11
                     }, this),
                     feedback && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -5334,104 +4027,33 @@ function GeneralGeometryTester() {
                             className: "text-gray-800",
                             children: feedback
                         }, void 0, false, {
-                            fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                            lineNumber: 821,
+                            fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                            lineNumber: 732,
                             columnNumber: 15
                         }, this)
                     }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                        lineNumber: 818,
-                        columnNumber: 13
-                    }, this),
-                    constructionHistory.length > 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "mt-6 bg-gray-50 rounded-lg p-4",
-                        children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
-                                className: "text-lg font-semibold text-gray-800 mb-3",
-                                children: "Historie konstrukcí"
-                            }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 828,
-                                columnNumber: 15
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                className: "space-y-2 max-h-40 overflow-y-auto",
-                                children: constructionHistory.map((construction, index)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        className: "flex items-center justify-between p-2 bg-white rounded border",
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                children: [
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                        className: "text-sm font-medium",
-                                                        children: [
-                                                            "Konstrukce ",
-                                                            index + 1
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 833,
-                                                        columnNumber: 23
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                        className: "text-xs text-gray-500 ml-2",
-                                                        children: new Date(construction.timestamp).toLocaleString('cs-CZ')
-                                                    }, void 0, false, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                        lineNumber: 834,
-                                                        columnNumber: 23
-                                                    }, this)
-                                                ]
-                                            }, void 0, true, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                lineNumber: 832,
-                                                columnNumber: 21
-                                            }, this),
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                className: "text-xs text-gray-500",
-                                                children: [
-                                                    construction.objects?.length || 0,
-                                                    " objektů"
-                                                ]
-                                            }, void 0, true, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                                lineNumber: 838,
-                                                columnNumber: 21
-                                            }, this)
-                                        ]
-                                    }, index, true, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                        lineNumber: 831,
-                                        columnNumber: 19
-                                    }, this))
-                            }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                                lineNumber: 829,
-                                columnNumber: 15
-                            }, this)
-                        ]
-                    }, void 0, true, {
-                        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                        lineNumber: 827,
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 729,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
-                fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-                lineNumber: 580,
+                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                lineNumber: 548,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
-            fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-            lineNumber: 579,
+            fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+            lineNumber: 547,
             columnNumber: 7
         }, this)
     }, void 0, false, {
-        fileName: "[project]/Documents/geometry_review/app/components/GeneralGeometryTester.tsx",
-        lineNumber: 578,
+        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+        lineNumber: 546,
         columnNumber: 5
     }, this);
 }
 }),
 ];
 
-//# sourceMappingURL=Documents_geometry_review_08f09730._.js.map
+//# sourceMappingURL=Documents_geometry_review_app_cc5cc8c5._.js.map

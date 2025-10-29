@@ -431,7 +431,7 @@ export default function GeneralGeometryTester() {
     currentDownHandler = (e:any) => {
       if (uiBusyRef.current) return
 
-      // If not in rename mode, pass through to normal drawing handler
+      // If not in rename mode, pass through to normal drawing handler and let undo-redo system handle drags
       if (!renameModeRef.current) {
         if (handleClickRef.current) handleClickRef.current(brd, e)
         return
@@ -449,7 +449,7 @@ export default function GeneralGeometryTester() {
       renameArmRef.current = { pt, wasFixed, wasDraggable }
       downPosRef.current = getMouseCoords(brd, e)
 
-      // Kill default drag start
+      // Only prevent default behavior in rename mode
       if (e.originalEvent) {
         e.originalEvent.stopPropagation()
         e.originalEvent.preventDefault()

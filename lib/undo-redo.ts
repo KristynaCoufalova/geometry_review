@@ -53,60 +53,32 @@ export class UndoRedoManager {
   private redoStack: Operation[] = []
   private onFeedback: ((message: string) => void) | undefined
   private EPS: number
-  private dragStartPositions = new Map<string, { x: number; y: number; name: string }>()
-  private draggedPointId: string | null = null
   private txnDepth = 0
   private pendingOps: Operation[] = []
-  private downHandler = (e: any) => {
-    const under = this.board.getAllObjectsUnderMouse(e)
-    const point = under.find((o: any) => o.elType === 'point' && !o.visProp?.fixed) as any
-    if (point) {
-      this.draggedPointId = point.id
-      this.dragStartPositions.set(point.id, {
-        x: point.X(),
-        y: point.Y(),
-        name: (point as any)._rawName || ''
-      })
-    } else {
-      this.draggedPointId = null
-    }
+  private suppressTracking = false
+  private moveStarts = new Map<string, { x: number; y: number; name: string }>()
+  private trackingInterval: NodeJS.Timeout | null = null
+  private withinTol(a: number, b: number, tol = this.EPS): boolean { 
+    return Math.abs(a - b) <= tol 
   }
-  private upHandler = (e: any) => {
-    if (this.draggedPointId) {
-      const point = (this.board.objects as any)[this.draggedPointId]
-      if (point && point.elType === 'point') {
-        const startPos = this.dragStartPositions.get(this.draggedPointId)
-        if (startPos) {
-          const endPos = { x: point.X(), y: point.Y(), name: (point as any)._rawName || '' }
-          
-          if (startPos.x !== endPos.x || startPos.y !== endPos.y || startPos.name !== endPos.name) {
-            const modifyOp: ModifyOp = {
-              kind: 'modify',
-              pointId: this.draggedPointId,
-              before: startPos,
-              after: endPos
-            }
-            this.pushOperation(modifyOp)
-          }
-          
-          this.dragStartPositions.delete(this.draggedPointId)
-        }
-      }
-      this.draggedPointId = null
-    }
+
+  private withSuppressed<T>(fn: () => T): T {
+    const prev = this.suppressTracking
+    this.suppressTracking = true
+    try { return fn() } finally { this.suppressTracking = prev }
   }
 
   constructor(config: UndoRedoConfig) {
     this.board = config.board
     this.onFeedback = config.onFeedback
     this.EPS = config.EPS || 0.03
-    this.setupEventListeners()
+    this.setupGlobalPointTracking()
   }
 
   // Public API
   public pushOperation(op: Operation): void {
     const frozen = structuredClone(op)
-    this.performOperation(frozen)
+    this.withSuppressed(() => this.performOperation(frozen))
     if (this.txnDepth > 0) {
       this.pendingOps.push(frozen)
     } else {
@@ -134,11 +106,15 @@ export class UndoRedoManager {
   public undo(): void {
     if (this.undoStack.length === 0) return
     
-    const op = this.undoStack.pop()!               // take original
-    const frozen = structuredClone(op)             // work on a clone
-    this.rollbackOperation(frozen)                 // may update _id / pointIds
-    this.redoStack.push(frozen)                    // push the UPDATED op, not the original
-    // Force board update after undo operation
+    const op = this.undoStack.pop()!
+    const frozen = structuredClone(op)
+    this.suppressTracking = true
+    try {
+      this.rollbackOperation(frozen)
+    } finally {
+      this.suppressTracking = false
+    }
+    this.redoStack.push(frozen)
     this.board.update()
     this.onFeedback?.('')
   }
@@ -146,11 +122,15 @@ export class UndoRedoManager {
   public redo(): void {
     if (this.redoStack.length === 0) return
     
-    const op = this.redoStack.pop()!               // take original
+    const op = this.redoStack.pop()!
     const frozen = structuredClone(op)
-    this.performOperation(frozen)                  // may update _id / pointIds
-    this.undoStack.push(frozen)                    // push UPDATED op back
-    // Force board update after redo operation
+    this.suppressTracking = true
+    try {
+      this.performOperation(frozen)
+    } finally {
+      this.suppressTracking = false
+    }
+    this.undoStack.push(frozen)
     this.board.update()
     this.onFeedback?.('')
   }
@@ -169,17 +149,116 @@ export class UndoRedoManager {
   }
 
   public dispose(): void {
-    try {
-      this.board.off('down', this.downHandler)
-      this.board.off('up', this.upHandler)
-    } catch {}
-    this.dragStartPositions.clear()
+    this.moveStarts.clear()
+    if (this.trackingInterval) {
+      clearInterval(this.trackingInterval)
+      this.trackingInterval = null
+    }
   }
 
-  // Private methods
-  private setupEventListeners(): void {
-    this.board.on('down', this.downHandler)
-    this.board.on('up', this.upHandler)
+  private setupGlobalPointTracking(): void {
+    // Attach tracking to all existing points
+    this.attachTrackingToAllPoints()
+    
+    // Set up a periodic check to attach tracking to any new points
+    this.trackingInterval = setInterval(() => {
+      this.attachTrackingToAllPoints()
+    }, 1000) // Check every second
+  }
+
+  private attachTrackingToAllPoints(): void {
+    const objects = Object.values(this.board.objects) as any[]
+    for (const obj of objects) {
+      if (obj?.elType === 'point' && !obj.visProp?.fixed) {
+        this.attachPointTracking(obj)
+      }
+    }
+  }
+
+  private posOf(pt: any): { x: number; y: number; name: string } {
+    return { x: pt.X(), y: pt.Y(), name: (pt as any)._rawName || '' }
+  }
+
+  private definingPointsOf(obj: any): any[] {
+    if (!obj) return []
+    if (obj.elType === 'segment' || obj.elType === 'line') {
+      const a: any = obj.point1 || obj.A || obj.points?.[0]
+      const b: any = obj.point2 || obj.B || obj.points?.[1]
+      return [a, b].filter(Boolean)
+    }
+    if (obj.elType === 'circle') {
+      const c: any = obj.center || obj.points?.[0]
+      const p: any = obj.point2 || obj.points?.[1]
+      return [c, p].filter(Boolean)
+    }
+    return []
+  }
+
+  private attachPointTracking(pt: any): void {
+    // Avoid double-binding
+    if ((pt as any)._undoRedoBound) return
+    ;(pt as any)._undoRedoBound = true
+
+    pt.on('down', () => {
+      if (this.suppressTracking) return
+      this.moveStarts.set(pt.id, this.posOf(pt))
+    })
+
+    pt.on('up', () => {
+      if (this.suppressTracking) return
+      const start = this.moveStarts.get(pt.id)
+      if (!start) return
+      const end = this.posOf(pt)
+
+      const moved = !this.withinTol(start.x, end.x) || !this.withinTol(start.y, end.y) || start.name !== end.name
+      if (moved) {
+        const op: ModifyOp = { kind: 'modify', pointId: pt.id, before: start, after: end }
+        this.pushOperation(op)
+      }
+      this.moveStarts.delete(pt.id)
+    })
+  }
+
+  private attachShapeTracking(obj: any): void {
+    // For segment/line/circle: record a BUNDLE of point moves
+    let before: Record<string, { x: number; y: number; name: string }> | null = null
+    let pts: any[] = []
+
+    const onDown = () => {
+      if (this.suppressTracking) return
+      pts = this.definingPointsOf(obj)
+      if (pts.length === 0) return
+      before = {}
+      for (const p of pts) before[p.id] = this.posOf(p)
+    }
+
+    const onUp = () => {
+      if (this.suppressTracking || !before || pts.length === 0) return
+      const ops: Operation[] = []
+      for (const p of pts) {
+        const b = before![p.id]
+        if (!b) continue
+        const a = this.posOf(p)
+        if (b.x !== a.x || b.y !== a.y || b.name !== a.name) {
+          ops.push({
+            kind: 'modify',
+            pointId: p.id,
+            before: b,
+            after: a
+          } as ModifyOp)
+        }
+      }
+      if (ops.length === 1 && ops[0]) {
+        this.pushOperation(ops[0])                 // single move
+      } else if (ops.length > 1) {
+        this.pushOperation({ kind: 'bundle', ops }) // move both endpoints / center+radius
+      }
+      before = null
+      pts = []
+    }
+
+    obj.on('down', onDown)
+    obj.on('up', onUp)
   }
 
   private findPointNear(xy: { x: number; y: number }, tol = this.EPS): any {
@@ -225,7 +304,10 @@ export class UndoRedoManager {
     attr: any = { name: '', size: 2, strokeColor: '#444', fillColor: '#666' }
   ): any | null {
     const existing = this.findPointNear(xy)
-    if (existing) return existing
+    if (existing) {
+      this.attachPointTracking(existing)
+      return existing
+    }
 
     try {
       const pt = this.board.create('point', [xy.x, xy.y], attr)
@@ -233,6 +315,10 @@ export class UndoRedoManager {
       ;(pt as any)._rawName = attr?.name ?? ''
       if (attr?.fixed !== undefined) pt.setAttribute({ fixed: attr.fixed })
       if (attr?.withLabel !== undefined) pt.setAttribute({ withLabel: attr.withLabel })
+      
+      // Attach move tracking to the new point
+      this.attachPointTracking(pt)
+      
       return pt
     } catch (error) {
       console.error('Failed to create point:', error)
@@ -292,7 +378,12 @@ export class UndoRedoManager {
         const pB: any = (el as any).point2 || (el as any).B || (el as any).points?.[1]
         if (this.isJXGPoint(pA) && this.isJXGPoint(pB)) {
           op.pointIds = [pA.id, pB.id]
+          // Attach tracking to the endpoint points if they don't have it yet
+          this.attachPointTracking(pA)
+          this.attachPointTracking(pB)
         }
+        // Attach shape tracking to the element itself
+        this.attachShapeTracking(el)
         // Force board update to ensure object is created immediately
         this.board.update()
       } catch (e) {
@@ -316,7 +407,12 @@ export class UndoRedoManager {
         const pp: any = (el as any).point2 || (el as any).points?.[1]
         if (this.isJXGPoint(pc) && this.isJXGPoint(pp)) {
           op.pointIds = [pc.id, pp.id]
+          // Attach tracking to the center and on-point if they don't have it yet
+          this.attachPointTracking(pc)
+          this.attachPointTracking(pp)
         }
+        // Attach shape tracking to the circle element itself
+        this.attachShapeTracking(el)
         // Force board update to ensure object is created immediately
         this.board.update()
       } catch (e) {
@@ -460,6 +556,8 @@ export class UndoRedoManager {
         if (this.isJXGPoint(pA) && this.isJXGPoint(pB)) {
           op.pointIds = [pA.id, pB.id]
         }
+        // Attach shape tracking to the recreated element
+        this.attachShapeTracking(el)
         // Force board update to ensure object is created immediately
         this.board.update()
       } catch (e) {
@@ -484,6 +582,8 @@ export class UndoRedoManager {
         if (this.isJXGPoint(pc) && this.isJXGPoint(pp)) {
           op.pointIds = [pc.id, pp.id]
         }
+        // Attach shape tracking to the recreated circle element
+        this.attachShapeTracking(el)
         // Force board update to ensure object is created immediately
         this.board.update()
       } catch (e) {

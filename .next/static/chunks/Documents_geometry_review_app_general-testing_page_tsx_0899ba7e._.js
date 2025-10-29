@@ -1,7 +1,7 @@
 (globalThis.TURBOPACK_CHUNK_LISTS || (globalThis.TURBOPACK_CHUNK_LISTS = [])).push({
     script: typeof document === "object" ? document.currentScript : undefined,
     chunks: [
-  "static/chunks/Documents_geometry_review_app_bd715546._.js",
+  "static/chunks/Documents_geometry_review_27c1915c._.js",
   "static/chunks/c0305_jsxgraph_src_base_coordselement_e728303b.js",
   "static/chunks/c0305_jsxgraph_src_base_board_3302944f.js",
   "static/chunks/c0305_jsxgraph_src_base_line_46772c0f.js",
@@ -15,7 +15,7 @@
   "static/chunks/c0305_jsxgraph_src_element_2757da74._.js",
   "static/chunks/c0305_jsxgraph_src_3d_993ddeaa._.js",
   "static/chunks/c0305_jsxgraph_src_4db65172._.js",
-  "static/chunks/c0305_lucide-react_dist_esm_392e5bf4._.js"
+  "static/chunks/c0305_4bddd903._.js"
 ],
     source: "dynamic"
 });

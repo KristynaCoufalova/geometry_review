@@ -2,10 +2,11 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import JXG from 'jsxgraph'
-import { Save, Trash2, Circle, Pencil, RotateCcw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut, Download, Upload, Info } from 'lucide-react'
+import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ZoomIn, ZoomOut, Download, Upload, Info } from 'lucide-react'
 import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
+import { UndoRedoManager } from '../../lib/undo-redo'
 
 type JBoard = JXG.Board & { renderer: any }
 
@@ -20,6 +21,7 @@ function coordsOfPoint(p: any) { return { x: p.X(), y: p.Y() } }
 export default function GeneralGeometryTester() {
   const boardRef = useRef<JBoard | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const undoRedoRef = useRef<UndoRedoManager | null>(null)
 
   const [tool, setTool] = useState<'mouse'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
   const [selected, setSelected] = useState<any[]>([])
@@ -61,7 +63,7 @@ export default function GeneralGeometryTester() {
   useEffect(() => { renameModeRef.current = renameMode }, [renameMode])
 
   function pushCreated(obj: any) {
-    if (obj?.id) setCreatedStack(s => [...s, obj.id])
+    if (obj && typeof obj === 'object' && 'id' in obj) setCreatedStack(s => [...s, obj.id])
   }
 
   function getMouseCoords(brd: JBoard, e: any): {x: number, y: number} {
@@ -79,6 +81,7 @@ export default function GeneralGeometryTester() {
   const renamePoint = useCallback((pt:any, newName:string) => {
     const trimmed = (newName || '').trim()
     const pretty = toSubscript(trimmed)                 // converts A_1 -> A₁
+    
     pt.setAttribute({ name: pretty, withLabel: !!trimmed })
     ;(pt as any)._rawName = trimmed                      // keep searchable original
     // Removed pt.board.update() to prevent point attachment issues
@@ -149,7 +152,9 @@ export default function GeneralGeometryTester() {
         break
       }
       case 'point': {
-        createPointSmart(brd, xy)
+        const attr = { name:'', size:2, strokeColor:'#444', fillColor:'#666' }
+        const op = undoRedoRef.current?.createPointOperation(xy.x, xy.y, attr)
+        if (op) undoRedoRef.current?.pushOperation(op)
         setFeedback('Bod vytvořen')
         break
       }
@@ -162,10 +167,12 @@ export default function GeneralGeometryTester() {
           if (arr.length === 1) {
             setFeedback('Klikněte na druhý bod')
           } else if (arr.length === 2) {
-            const seg = brd.create('segment', [arr[0], arr[1]], {
-              strokeColor: '#2563eb', strokeWidth: 2
-            })
-            pushCreated(seg)
+            const a = arr[0] as any, b = arr[1] as any
+            const p1 = { x: a.X(), y: a.Y() }
+            const p2 = { x: b.X(), y: b.Y() }
+            const attr = { strokeColor:'#2563eb', strokeWidth:2 }
+            const op = undoRedoRef.current?.createSegmentOperation(p1, p2, attr)
+            if (op) undoRedoRef.current?.pushOperation(op)
             setFeedback('Úsečka vytvořena')
             return []
           }
@@ -182,10 +189,12 @@ export default function GeneralGeometryTester() {
           if (arr.length === 1) {
             setFeedback('Klikněte na druhý bod')
           } else if (arr.length === 2) {
-            const line = brd.create('line', [arr[0], arr[1]], {
-              strokeColor: '#059669', strokeWidth: 1, dash: 1
-            })
-            pushCreated(line)
+            const a = arr[0] as any, b = arr[1] as any
+            const p1 = { x: a.X(), y: a.Y() }
+            const p2 = { x: b.X(), y: b.Y() }
+            const attr = { strokeColor:'#059669', strokeWidth:1, dash:1 }
+            const op = undoRedoRef.current?.createLineOperation(p1, p2, attr)
+            if (op) undoRedoRef.current?.pushOperation(op)
             setFeedback('Přímka vytvořena')
             return []
           }
@@ -202,10 +211,12 @@ export default function GeneralGeometryTester() {
           if (arr.length === 1) {
             setFeedback('Klikněte na bod na kružnici')
           } else if (arr.length === 2) {
-            const circ = brd.create('circle', [arr[0], arr[1]], {
-              strokeColor: '#dc2626', strokeWidth: 2
-            })
-            pushCreated(circ)
+            const c = arr[0] as any, p = arr[1] as any
+            const center = { x: c.X(), y: c.Y() }
+            const on     = { x: p.X(), y: p.Y() }
+            const attr = { strokeColor:'#dc2626', strokeWidth:2 }
+            const op = undoRedoRef.current?.createCircleOperation(center, on, attr)
+            if (op) undoRedoRef.current?.pushOperation(op)
             setFeedback('Kružnice vytvořena')
             return []
           }
@@ -215,15 +226,22 @@ export default function GeneralGeometryTester() {
       }
       case 'rubber': {
         const under = brd.getAllObjectsUnderMouse(e)
-        const toRemove = under.find((o:any) => !o.visProp?.fixed)
+        const toRemove:any = under.find((o:any) => !o.visProp?.fixed)
         if (toRemove) {
-          brd.removeObject(toRemove as JXG.GeometryElement)
-          setFeedback('Objekt smazán')
+          const delOp = undoRedoRef.current?.createDeleteOperation(toRemove)
+          if (delOp) {
+            undoRedoRef.current?.pushOperation(delOp)
+            setFeedback('Objekt smazán')
+          } else {
+            // fallback: hard remove (won't be undoable)
+            brd.removeObject(toRemove as JXG.GeometryElement)
+            setFeedback('Objekt smazán (bez historie)')
+          }
         }
         break
       }
     }
-  }, [createPointSmart, renamePoint])
+  }, [createPointSmart])
 
   useEffect(() => { handleClickRef.current = handleClick }, [handleClick])
 
@@ -300,11 +318,19 @@ export default function GeneralGeometryTester() {
     
     boardRef.current = brd
 
+    // Initialize the standalone undo/redo system
+    undoRedoRef.current = new UndoRedoManager({
+      board: brd,
+      onFeedback: setFeedback,
+      EPS: EPS
+    })
+
     return () => {
       try { 
         JXG.JSXGraph.freeBoard(brd) 
       } catch {}
       boardRef.current = null
+      undoRedoRef.current = null
     }
   }, []) // Only initialize once
 
@@ -412,13 +438,11 @@ export default function GeneralGeometryTester() {
   }, [renameMode, renamePoint])
 
   function undoLast() {
-    const brd = boardRef.current
-    if (!brd || createdStack.length === 0) return
-    const lastId = createdStack[createdStack.length - 1]
-    const obj = lastId ? brd.objects[lastId] : undefined
-    if (obj) brd.removeObject(obj as JXG.GeometryElement)
-    setCreatedStack(s => s.slice(0, -1))
-    setFeedback('')
+    undoRedoRef.current?.undo()
+  }
+
+  function redoLast() {
+    undoRedoRef.current?.redo()
   }
 
   function clearAll() {
@@ -645,6 +669,9 @@ export default function GeneralGeometryTester() {
 
             <button onClick={undoLast} className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-2">
               <RotateCcw size={18}/> Zpět
+            </button>
+            <button onClick={redoLast} className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-2">
+              <RotateCw size={18}/> Znovu
             </button>
             <button onClick={clearAll} className="px-3 py-2 rounded bg-red-500 text-white hover:bg-red-600 flex items-center gap-2">
               <Trash2 size={18}/> Vymazat

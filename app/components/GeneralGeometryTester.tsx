@@ -7,9 +7,8 @@ import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
 import { UndoRedoManager } from '../../lib/undo-redo'
-import { GridManager, GridMode } from '../../lib/grid-manager'
-
-type JBoard = JXG.Board & { renderer: any }
+import { GridMode } from '../../lib/grid-manager'
+import { BoardManager, JBoard } from '../../lib/board-manager'
 
 const EPS = 0.05
 
@@ -56,10 +55,9 @@ function snapToGrid(x: number, y: number, gridOption: GridMode, softSnap: boolea
 function coordsOfPoint(p: any) { return { x: p.X(), y: p.Y() } }
 
 export default function GeneralGeometryTester() {
-  const boardRef = useRef<JBoard | null>(null)
+  const boardManagerRef = useRef<BoardManager | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const undoRedoRef = useRef<UndoRedoManager | null>(null)
-  const gridMgrRef = useRef<GridManager | null>(null)
 
   const [tool, setTool] = useState<'mouse'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
   const [selected, setSelected] = useState<any[]>([])
@@ -460,7 +458,9 @@ export default function GeneralGeometryTester() {
   useEffect(() => {
     if (!containerRef.current) return
 
-    const brd = JXG.JSXGraph.initBoard(containerRef.current, {
+    // Create board manager (handles board creation and grid management)
+    const boardManager = new BoardManager({
+      container: containerRef.current,
       boundingbox: [-1, 8, 11, -1],
       axis: false,
       showNavigation: false,
@@ -469,10 +469,11 @@ export default function GeneralGeometryTester() {
       pan: { enabled: false },
       zoom: false,
       keepaspectratio: true
-    }) as JBoard
+    })
 
-    boardRef.current = brd
-    gridMgrRef.current = new GridManager(brd, containerRef.current)
+    boardManagerRef.current = boardManager
+
+    const brd = boardManager.getBoard()
 
     // Optional: global snap-to-grid defaults for points (finer for smoother placement)
     // (You can still override per element in your creators.)
@@ -487,23 +488,16 @@ export default function GeneralGeometryTester() {
       EPS: EPS
     })
 
-    // First grid application
-    gridMgrRef.current.setMode(gridOption)
-
-    // If you ever enable resize/pan/zoom, keep the dot grid in sync:
-    // brd.on('boundingbox', () => gridMgrRef.current?.sync())
-
     return () => {
-      try { JXG.JSXGraph.freeBoard(brd) } catch {}
-      boardRef.current = null
+      boardManager.free()
+      boardManagerRef.current = null
       undoRedoRef.current = null
-      gridMgrRef.current = null
     }
-  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
-  // When user changes the option, just update the grid manager
+  // When user changes the option, update the grid manager
   useEffect(() => {
-    gridMgrRef.current?.setMode(gridOption)
+    boardManagerRef.current?.setGridMode(gridOption)
   }, [gridOption])
 
   // Close settings dropdown when clicking outside
@@ -523,7 +517,7 @@ export default function GeneralGeometryTester() {
 
   // Update event handlers when rename mode changes
   useEffect(() => {
-    const brd = boardRef.current
+    const brd = boardManagerRef.current?.getBoard()
     if (!brd) return
 
     // Store references to our specific handlers so we can remove them properly
@@ -631,7 +625,7 @@ export default function GeneralGeometryTester() {
   }
 
   function clearAll() {
-    const brd = boardRef.current
+    const brd = boardManagerRef.current?.getBoard()
     if (!brd) return
     const toRemove: any[] = []
     for (const key in brd.objects) {
@@ -648,11 +642,12 @@ export default function GeneralGeometryTester() {
   }
 
   function saveConstruction() {
-    if (!boardRef.current) return
+    const brd = boardManagerRef.current?.getBoard()
+    if (!brd) return
     const timestamp = new Date().toISOString()
     const constructionData = {
       timestamp,
-      objects: Object.values(boardRef.current.objects).map((obj: any) => ({
+      objects: Object.values(brd.objects).map((obj: any) => ({
         id: obj.id,
         type: obj.elType,
         name: obj.name,
@@ -696,7 +691,8 @@ export default function GeneralGeometryTester() {
   }
 
   function loadConstruction() {
-    if (!data || !boardRef.current) return
+    const brd = boardManagerRef.current?.getBoard()
+    if (!data || !brd) return
     
     // Clear current construction
     clearAll()

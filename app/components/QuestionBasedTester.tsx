@@ -9,6 +9,7 @@ import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
 import { supabase } from '../../lib/supabase'
+import { ensureAuthenticatedUserExists } from '../../lib/supabase-helpers'
 
 type JBoard = JXG.Board & { renderer: any }
 
@@ -184,15 +185,27 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
           : { data: { user: null } }
         
         if (authUser) {
-          // User is authenticated, use their real UUID
-          userId = authUser.id
-          console.debug('Using authenticated user:', authUser.email, 'ID:', authUser.id)
+          // User is authenticated - ensure they exist in the users table
+          try {
+            const userRecord = await ensureAuthenticatedUserExists(
+              authUser.id,
+              authUser.email || '',
+              authUser.user_metadata?.name || authUser.email?.split('@')[0]
+            )
+            userId = userRecord.id
+            console.debug('Using authenticated user:', authUser.email, 'ID:', userId)
+          } catch (err) {
+            console.error('Error ensuring authenticated user exists:', err)
+            throw new Error('Failed to create user record for authenticated user')
+          }
         } else if (studentId === 'anonymous') {
-          // For anonymous users, generate a proper UUID
-          userId = crypto.randomUUID()
-          console.debug('Using anonymous UUID userId:', userId)
+          // For anonymous users, we need to handle this differently
+          // Since sessions.user_id requires a foreign key to users, we cannot use a random UUID
+          // For now, throw an error - anonymous sessions should be handled differently
+          // or you could create a system/anonymous user in the DB
+          throw new Error('Anonymous users are not supported. Please log in to continue.')
         } else {
-          // Use the provided studentId as-is (should be a valid UUID)
+          // Use the provided studentId as-is (should be a valid UUID that exists in users table)
           userId = studentId
           console.debug('Using provided studentId:', userId)
         }

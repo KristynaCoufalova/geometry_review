@@ -11,10 +11,46 @@ import { GridManager, GridMode } from '../../lib/grid-manager'
 
 type JBoard = JXG.Board & { renderer: any }
 
-const EPS = 0.03
+const EPS = 0.05
 
 function dist(a: {x:number,y:number}, b:{x:number,y:number}) {
   return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+// Helper function to snap coordinates to grid (with optional soft snapping)
+function snapToGrid(x: number, y: number, gridOption: GridMode, softSnap: boolean = false): {x: number, y: number} {
+  if (gridOption === 'none') return { x, y }
+  
+  let snapSize = 0.5 // default minor grid spacing
+  
+  // Fine-tuned snap sizes for smoother placement
+  if (gridOption === 'major' || gridOption === 'major-minor') {
+    snapSize = 0.25 // finer snap for major grid
+  } else if (gridOption === 'minor') {
+    snapSize = 0.1 // very fine snap for minor grid
+  } else if (gridOption === 'dot') {
+    snapSize = 0.25 // fine snap for dot grid
+  }
+  
+  // Soft snap: only snap if close to grid line (within 30% of snap size)
+  if (softSnap) {
+    const snappedX = Math.round(x / snapSize) * snapSize
+    const snappedY = Math.round(y / snapSize) * snapSize
+    const threshold = snapSize * 0.3
+    
+    const distX = Math.abs(x - snappedX)
+    const distY = Math.abs(y - snappedY)
+    
+    return {
+      x: distX < threshold ? snappedX : x,
+      y: distY < threshold ? snappedY : y
+    }
+  }
+  
+  return {
+    x: Math.round(x / snapSize) * snapSize,
+    y: Math.round(y / snapSize) * snapSize
+  }
 }
 
 function coordsOfPoint(p: any) { return { x: p.X(), y: p.Y() } }
@@ -55,11 +91,12 @@ export default function GeneralGeometryTester() {
   const selectedRef = useRef(selected)
   const uiBusyRef = useRef(uiBusy)
   const renameModeRef = useRef(renameMode)
+  const gridOptionRef = useRef(gridOption)
   const handleClickRef = useRef<((brd: JBoard, e: any) => void) | null>(null)
   
   // Rename mode refs for down+up approach
-  const renameArmRef = useRef<{ pt:any|null, wasFixed:boolean, wasDraggable:boolean }>(
-    { pt:null, wasFixed:false, wasDraggable:true }
+  const renameArmRef = useRef<{ pt:any|null, wasFixed:boolean }>(
+    { pt:null, wasFixed:false }
   )
   const downPosRef = useRef<{x:number,y:number}|null>(null)
   
@@ -67,6 +104,7 @@ export default function GeneralGeometryTester() {
   useEffect(() => { selectedRef.current = selected }, [selected])
   useEffect(() => { uiBusyRef.current = uiBusy }, [uiBusy])
   useEffect(() => { renameModeRef.current = renameMode }, [renameMode])
+  useEffect(() => { gridOptionRef.current = gridOption }, [gridOption])
 
   function pushCreated(obj: any) {
     if (obj && typeof obj === 'object' && 'id' in obj) setCreatedStack(s => [...s, obj.id])
@@ -117,51 +155,78 @@ export default function GeneralGeometryTester() {
 
   // Helper function to get or create points via history system
   const getOrCreatePointViaHistory = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
+    // Use soft snapping for smoother placement - only snap if close to grid
+    const snapped = snapToGrid(xy.x, xy.y, gridOption, true)
+    
+    // Use grid-aware EPS: slightly larger than snap size to catch nearby snapped points
+    const snapSize = gridOption === 'none' ? 0.1 : (gridOption === 'minor' ? 0.1 : 0.25)
+    const checkEPS = Math.max(EPS, snapSize * 0.8) // 80% of snap size for better precision
+    
     // try to reuse an existing non-fixed point near the coordinates
     const objects = Object.values(brd.objects) as any[]
     const existing = objects.find((o: any) => {
       if (o?.elType === 'point' && !o.visProp?.fixed) {
         const p = { x: o.X(), y: o.Y() }
-        return Math.hypot(p.x - xy.x, p.y - xy.y) <= EPS
+        return Math.hypot(p.x - snapped.x, p.y - snapped.y) <= checkEPS
       }
       return false
     })
     if (existing) return existing
 
-    // create point directly but also record it in history
+    // create point at snapped coordinates (with soft snap)
     const snap = gridOption !== 'none'
-    const pt = brd.create('point', [xy.x, xy.y], {
+    const snapSizeX = gridOption === 'none' ? 0.25 : (gridOption === 'minor' ? 0.1 : 0.25)
+    const snapSizeY = snapSizeX
+    
+    const pt = brd.create('point', [snapped.x, snapped.y], {
       name: '', 
       size: 2, 
       strokeColor: '#444', 
       fillColor: '#666',
       snapToGrid: snap,
-      snapSizeX: 0.5,
-      snapSizeY: 0.5
+      snapSizeX: snapSizeX,
+      snapSizeY: snapSizeY
     })
     ;(pt as any)._rawName = ''
     
-    // Also create a history operation for this point
-    const attr = { name:'', size:2, strokeColor:'#444', fillColor:'#666' }
-    const op = undoRedoRef.current?.createPointOperation(xy.x, xy.y, attr)
-    if (op) {
-      op._id = pt.id
-      undoRedoRef.current!.pushOperation(op)
-    }
+    // Don't create a separate point operation here - the point will be tracked
+    // automatically when the shape operation (segment/line/circle) executes
+    // The shape operations will find this point by ID and attach tracking to it
     
     return pt
   }, [gridOption])
 
   const createPointSmart = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
+    // Use soft snapping for smoother placement
+    const snapped = snapToGrid(xy.x, xy.y, gridOption, true)
+    
+    // Use grid-aware EPS to check for existing points
+    const snapSize = gridOption === 'none' ? 0.1 : (gridOption === 'minor' ? 0.1 : 0.25)
+    const checkEPS = Math.max(EPS, snapSize * 0.8)
+    
+    // Check for existing points at snapped location
+    const objects = Object.values(brd.objects) as any[]
+    const existing = objects.find((o: any) => {
+      if (o?.elType === 'point' && !o.visProp?.fixed) {
+        const p = { x: o.X(), y: o.Y() }
+        return Math.hypot(p.x - snapped.x, p.y - snapped.y) <= checkEPS
+      }
+      return false
+    })
+    if (existing) return existing
+    
     const snap = gridOption !== 'none'
-    const pt = brd.create('point', [xy.x, xy.y], {
+    const snapSizeX = gridOption === 'none' ? 0.25 : (gridOption === 'minor' ? 0.1 : 0.25)
+    const snapSizeY = snapSizeX
+    
+    const pt = brd.create('point', [snapped.x, snapped.y], {
       name: '', 
       size: 2, 
       strokeColor: '#444', 
       fillColor: '#666',
       snapToGrid: snap,
-      snapSizeX: 0.5,
-      snapSizeY: 0.5
+      snapSizeX: snapSizeX,
+      snapSizeY: snapSizeY
     })
     ;(pt as any)._rawName = ''
     pushCreated(pt)
@@ -202,10 +267,29 @@ export default function GeneralGeometryTester() {
         break
       }
       case 'point': {
-        const attr = { name:'', size:2, strokeColor:'#444', fillColor:'#666' }
-        const op = undoRedoRef.current?.createPointOperation(xy.x, xy.y, attr)
-        if (op) undoRedoRef.current?.pushOperation(op)
-        setFeedback('Bod vytvořen')
+        // Use soft snapping for smoother placement
+        const snapped = snapToGrid(xy.x, xy.y, gridOptionRef.current, true)
+        
+        // Check for existing point at snapped location
+        const snapSize = gridOptionRef.current === 'none' ? 0.1 : (gridOptionRef.current === 'minor' ? 0.1 : 0.25)
+        const checkEPS = Math.max(EPS, snapSize * 0.8)
+        const objects = Object.values(brd.objects) as any[]
+        const existing = objects.find((o: any) => {
+          if (o?.elType === 'point' && !o.visProp?.fixed) {
+            const p = { x: o.X(), y: o.Y() }
+            return Math.hypot(p.x - snapped.x, p.y - snapped.y) <= checkEPS
+          }
+          return false
+        })
+        
+        if (!existing) {
+          const attr = { name:'', size:2, strokeColor:'#444', fillColor:'#666' }
+          const op = undoRedoRef.current?.createPointOperation(snapped.x, snapped.y, attr)
+          if (op) undoRedoRef.current?.pushOperation(op)
+          setFeedback('Bod vytvořen')
+        } else {
+          setFeedback('Bod již existuje na této pozici')
+        }
         break
       }
       case 'segment': {
@@ -390,11 +474,11 @@ export default function GeneralGeometryTester() {
     boardRef.current = brd
     gridMgrRef.current = new GridManager(brd, containerRef.current)
 
-    // Optional: global snap-to-grid defaults for points
+    // Optional: global snap-to-grid defaults for points (finer for smoother placement)
     // (You can still override per element in your creators.)
     JXG.Options.point.snapToGrid = true
-    JXG.Options.point.snapSizeX = 0.5
-    JXG.Options.point.snapSizeY = 0.5
+    JXG.Options.point.snapSizeX = 0.25
+    JXG.Options.point.snapSizeY = 0.25
 
     // Init undo/redo
     undoRedoRef.current = new UndoRedoManager({
@@ -415,7 +499,7 @@ export default function GeneralGeometryTester() {
       undoRedoRef.current = null
       gridMgrRef.current = null
     }
-  }, [gridOption])  // <-- include gridOption for initial setup
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // When user changes the option, just update the grid manager
   useEffect(() => {
@@ -463,7 +547,6 @@ export default function GeneralGeometryTester() {
       // Restore mobility
       const arm = renameArmRef.current
       ;(pt as any).setAttribute({ fixed: arm.wasFixed })
-      ;(pt as any).draggable = arm.wasDraggable
 
       // Stop further board interaction from this click
       if (e?.originalEvent) {
@@ -475,7 +558,7 @@ export default function GeneralGeometryTester() {
       if (!proposed) setRenameMode(false)
 
       // Clear arm
-      renameArmRef.current = { pt:null, wasFixed:false, wasDraggable:true }
+      renameArmRef.current = { pt:null, wasFixed:false }
       downPosRef.current = null
     }
 
@@ -494,11 +577,9 @@ export default function GeneralGeometryTester() {
 
       // Freeze now (before any drag begins)
       const wasFixed = !!(pt as any).visProp.fixed
-      const wasDraggable = !!(pt as any).draggable
       ;(pt as any).setAttribute({ fixed: true })
-      ;(pt as any).draggable = false
 
-      renameArmRef.current = { pt, wasFixed, wasDraggable }
+      renameArmRef.current = { pt, wasFixed }
       downPosRef.current = getMouseCoords(brd, e)
 
       // Only prevent default behavior in rename mode
@@ -526,8 +607,7 @@ export default function GeneralGeometryTester() {
       // If it was a drag after all, restore the point & abort rename
       const { pt } = arm
       ;(pt as any).setAttribute({ fixed: arm.wasFixed })
-      ;(pt as any).draggable = arm.wasDraggable
-      renameArmRef.current = { pt:null, wasFixed:false, wasDraggable:true }
+      renameArmRef.current = { pt:null, wasFixed:false }
       downPosRef.current = null
     }
 

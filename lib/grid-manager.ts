@@ -67,7 +67,11 @@ export class GridManager {
         highlight: false,
         layer: 0,
         withLabel: false,
-        showInfobox: false
+        showInfobox: false,
+        visible: true,
+        trace: false,
+        track: false,
+        draggable: false
       })
       this.gridLines.push(line)
     }
@@ -81,7 +85,11 @@ export class GridManager {
         highlight: false,
         layer: 0,
         withLabel: false,
-        showInfobox: false
+        showInfobox: false,
+        visible: true,
+        trace: false,
+        track: false,
+        draggable: false
       })
       this.gridLines.push(line)
     }

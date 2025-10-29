@@ -62,8 +62,8 @@ export default function GeometryConstructionTester() {
   const handleClickRef = useRef<((brd: JBoard, e: any) => void) | null>(null)
   
   // Rename mode refs for down+up approach
-  const renameArmRef = useRef<{ pt:any|null, wasFixed:boolean, wasDraggable:boolean }>(
-    { pt:null, wasFixed:false, wasDraggable:true }
+  const renameArmRef = useRef<{ pt:any|null, wasFixed:boolean }>(
+    { pt:null, wasFixed:false }
   )
   const downPosRef = useRef<{x:number,y:number}|null>(null)
   
@@ -376,7 +376,6 @@ export default function GeometryConstructionTester() {
       // Restore mobility
       const arm = renameArmRef.current
       ;(pt as any).setAttribute({ fixed: arm.wasFixed })
-      ;(pt as any).draggable = arm.wasDraggable
 
       // Stop further board interaction from this click
       if (e?.originalEvent) {
@@ -388,7 +387,7 @@ export default function GeometryConstructionTester() {
       if (!proposed) setRenameMode(false)
 
       // Clear arm
-      renameArmRef.current = { pt:null, wasFixed:false, wasDraggable:true }
+      renameArmRef.current = { pt:null, wasFixed:false }
       downPosRef.current = null
     }
 
@@ -407,11 +406,9 @@ export default function GeometryConstructionTester() {
 
       // Freeze now (before any drag begins)
       const wasFixed = !!(pt as any).visProp.fixed
-      const wasDraggable = !!(pt as any).draggable
       ;(pt as any).setAttribute({ fixed: true })
-      ;(pt as any).draggable = false
 
-      renameArmRef.current = { pt, wasFixed, wasDraggable }
+      renameArmRef.current = { pt, wasFixed }
       downPosRef.current = getMouseCoords(brd, e)
 
       // Kill default drag start
@@ -439,8 +436,7 @@ export default function GeometryConstructionTester() {
       // If it was a drag after all, restore the point & abort rename
       const { pt } = arm
       ;(pt as any).setAttribute({ fixed: arm.wasFixed })
-      ;(pt as any).draggable = arm.wasDraggable
-      renameArmRef.current = { pt:null, wasFixed:false, wasDraggable:true }
+      renameArmRef.current = { pt:null, wasFixed:false }
       downPosRef.current = null
     }
 

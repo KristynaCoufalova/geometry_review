@@ -98,6 +98,50 @@ export async function getOrCreateUser(email: string, name?: string): Promise<Use
   return newUser
 }
 
+/**
+ * Ensures a user record exists in the users table for an authenticated Supabase user.
+ * This is needed because sessions.user_id references users.id, and we need to ensure
+ * the authenticated user has a corresponding record in the users table.
+ */
+export async function ensureAuthenticatedUserExists(authUserId: string, email: string, name?: string): Promise<User> {
+  // Try to get existing user by ID (should match auth user ID)
+  const { data: existingUser, error: fetchError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', authUserId)
+    .single()
+
+  if (existingUser && !fetchError) {
+    return existingUser
+  }
+
+  // Create new user record with the auth user's ID
+  const { data: newUser, error: createError } = await supabase
+    .from('users')
+    .insert({
+      id: authUserId, // Use the auth user's ID
+      email,
+      name: name || email.split('@')[0],
+      role: 'student'
+    })
+    .select()
+    .single()
+
+  if (createError) {
+    // If error is due to duplicate, try fetching again
+    if (createError.code === '23505') { // Unique violation
+      const { data: user } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUserId)
+        .single()
+      if (user) return user
+    }
+    throw createError
+  }
+  return newUser
+}
+
 // Session operations
 export async function createSession(userId: string, questionId: string): Promise<Session> {
   const { data, error } = await supabase

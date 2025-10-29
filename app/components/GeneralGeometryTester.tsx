@@ -109,6 +109,36 @@ export default function GeneralGeometryTester() {
     return pt || null
   }
 
+  // Helper function to get or create points via history system
+  const getOrCreatePointViaHistory = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
+    // try to reuse an existing non-fixed point near the coordinates
+    const objects = Object.values(brd.objects) as any[]
+    const existing = objects.find((o: any) => {
+      if (o?.elType === 'point' && !o.visProp?.fixed) {
+        const p = { x: o.X(), y: o.Y() }
+        return Math.hypot(p.x - xy.x, p.y - xy.y) <= EPS
+      }
+      return false
+    })
+    if (existing) return existing
+
+    // create point directly but also record it in history
+    const pt = brd.create('point', [xy.x, xy.y], {
+      name: '', size: 2, strokeColor: '#444', fillColor: '#666'
+    })
+    ;(pt as any)._rawName = ''
+    
+    // Also create a history operation for this point
+    const attr = { name:'', size:2, strokeColor:'#444', fillColor:'#666' }
+    const op = undoRedoRef.current?.createPointOperation(xy.x, xy.y, attr)
+    if (op) {
+      op._id = pt.id
+      undoRedoRef.current!.pushOperation(op)
+    }
+    
+    return pt
+  }, [])
+
   const createPointSmart = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
     const pt = brd.create('point', [xy.x, xy.y], {
       name: '', size: 2, strokeColor: '#444', fillColor: '#666'
@@ -159,69 +189,90 @@ export default function GeneralGeometryTester() {
         break
       }
       case 'segment': {
-        let p = nearestFreePoint(brd, e)
-        if (!p) p = createPointSmart(brd, xy)
+        const first = selectedRef.current[0]
+        if (!first) {
+          // first click
+          undoRedoRef.current?.begin()
+          const p = getOrCreatePointViaHistory(brd, xy)
+          if (!p) { undoRedoRef.current?.commit(); break }
+          setSelected([p])
+          setFeedback('Klikněte na druhý bod')
+          // don't commit yet; we'll finish in second click
+          break
+        }
 
-        setSelected(prev => {
-          const arr = [...prev, p]
-          if (arr.length === 1) {
-            setFeedback('Klikněte na druhý bod')
-          } else if (arr.length === 2) {
-            const a = arr[0] as any, b = arr[1] as any
-            const p1 = { x: a.X(), y: a.Y() }
-            const p2 = { x: b.X(), y: b.Y() }
-            const attr = { strokeColor:'#2563eb', strokeWidth:2 }
-            const op = undoRedoRef.current?.createSegmentOperation(p1, p2, attr)
-            if (op) undoRedoRef.current?.pushOperation(op)
-            setFeedback('Úsečka vytvořena')
-            return []
-          }
-          return arr
-        })
+        // second click
+        const a:any = first
+        const b = getOrCreatePointViaHistory(brd, xy)
+        if (!b) { undoRedoRef.current?.commit(); setSelected([]); break }
+
+        const p1 = { x: a.X(), y: a.Y() }
+        const p2 = { x: b.X(), y: b.Y() }
+        const attr = { strokeColor:'#2563eb', strokeWidth:2 }
+        const op = undoRedoRef.current?.createSegmentOperation(p1, p2, attr)
+        if (op) {
+          op.pointIds = [a.id, b.id]              // <-- bind exact endpoints
+          undoRedoRef.current?.pushOperation(op)
+        }
+        undoRedoRef.current?.commit()
+        setSelected([])
+        setFeedback('Úsečka vytvořena')
         break
       }
       case 'line': {
-        let p = nearestFreePoint(brd, e)
-        if (!p) p = createPointSmart(brd, xy)
+        const first = selectedRef.current[0]
+        if (!first) {
+          undoRedoRef.current?.begin()
+          const p = getOrCreatePointViaHistory(brd, xy)
+          if (!p) { undoRedoRef.current?.commit(); break }
+          setSelected([p])
+          setFeedback('Klikněte na druhý bod')
+          break
+        }
 
-        setSelected(prev => {
-          const arr = [...prev, p]
-          if (arr.length === 1) {
-            setFeedback('Klikněte na druhý bod')
-          } else if (arr.length === 2) {
-            const a = arr[0] as any, b = arr[1] as any
-            const p1 = { x: a.X(), y: a.Y() }
-            const p2 = { x: b.X(), y: b.Y() }
-            const attr = { strokeColor:'#059669', strokeWidth:1, dash:1 }
-            const op = undoRedoRef.current?.createLineOperation(p1, p2, attr)
-            if (op) undoRedoRef.current?.pushOperation(op)
-            setFeedback('Přímka vytvořena')
-            return []
-          }
-          return arr
-        })
+        const a:any = first
+        const b = getOrCreatePointViaHistory(brd, xy)
+        if (!b) { undoRedoRef.current?.commit(); setSelected([]); break }
+
+        const p1 = { x: a.X(), y: a.Y() }
+        const p2 = { x: b.X(), y: b.Y() }
+        const attr = { strokeColor:'#059669', strokeWidth:1, dash:1 }
+        const op = undoRedoRef.current?.createLineOperation(p1, p2, attr)
+        if (op) {
+          op.pointIds = [a.id, b.id]
+          undoRedoRef.current?.pushOperation(op)
+        }
+        undoRedoRef.current?.commit()
+        setSelected([])
+        setFeedback('Přímka vytvořena')
         break
       }
       case 'circle': {
-        let p = nearestFreePoint(brd, e)
-        if (!p) p = createPointSmart(brd, xy)
+        const first = selectedRef.current[0]
+        if (!first) {
+          undoRedoRef.current?.begin()
+          const c = getOrCreatePointViaHistory(brd, xy)
+          if (!c) { undoRedoRef.current?.commit(); break }
+          setSelected([c])
+          setFeedback('Klikněte na bod na kružnici')
+          break
+        }
 
-        setSelected(prev => {
-          const arr = [...prev, p]
-          if (arr.length === 1) {
-            setFeedback('Klikněte na bod na kružnici')
-          } else if (arr.length === 2) {
-            const c = arr[0] as any, p = arr[1] as any
-            const center = { x: c.X(), y: c.Y() }
-            const on     = { x: p.X(), y: p.Y() }
-            const attr = { strokeColor:'#dc2626', strokeWidth:2 }
-            const op = undoRedoRef.current?.createCircleOperation(center, on, attr)
-            if (op) undoRedoRef.current?.pushOperation(op)
-            setFeedback('Kružnice vytvořena')
-            return []
-          }
-          return arr
-        })
+        const c:any = first
+        const p = getOrCreatePointViaHistory(brd, xy)
+        if (!p) { undoRedoRef.current?.commit(); setSelected([]); break }
+
+        const center = { x: c.X(), y: c.Y() }
+        const on     = { x: p.X(), y: p.Y() }
+        const attr = { strokeColor:'#dc2626', strokeWidth:2 }
+        const op = undoRedoRef.current?.createCircleOperation(center, on, attr)
+        if (op) {
+          op.pointIds = [c.id, p.id]
+          undoRedoRef.current?.pushOperation(op)
+        }
+        undoRedoRef.current?.commit()
+        setSelected([])
+        setFeedback('Kružnice vytvořena')
         break
       }
       case 'rubber': {
@@ -241,7 +292,7 @@ export default function GeneralGeometryTester() {
         break
       }
     }
-  }, [createPointSmart])
+  }, [getOrCreatePointViaHistory])
 
   useEffect(() => { handleClickRef.current = handleClick }, [handleClick])
 

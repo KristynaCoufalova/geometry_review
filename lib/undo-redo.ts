@@ -138,6 +138,8 @@ export class UndoRedoManager {
     const frozen = structuredClone(op)             // work on a clone
     this.rollbackOperation(frozen)                 // may update _id / pointIds
     this.redoStack.push(frozen)                    // push the UPDATED op, not the original
+    // Force board update after undo operation
+    this.board.update()
     this.onFeedback?.('')
   }
 
@@ -148,6 +150,8 @@ export class UndoRedoManager {
     const frozen = structuredClone(op)
     this.performOperation(frozen)                  // may update _id / pointIds
     this.undoStack.push(frozen)                    // push UPDATED op back
+    // Force board update after redo operation
+    this.board.update()
     this.onFeedback?.('')
   }
 
@@ -266,6 +270,8 @@ export class UndoRedoManager {
       const pt = this.ensurePoint({ x, y }, attr)
       if (!pt) return
       op._id = pt.id
+      // Force board update to ensure point is created immediately
+      this.board.update()
       return
     }
 
@@ -287,6 +293,8 @@ export class UndoRedoManager {
         if (this.isJXGPoint(pA) && this.isJXGPoint(pB)) {
           op.pointIds = [pA.id, pB.id]
         }
+        // Force board update to ensure object is created immediately
+        this.board.update()
       } catch (e) {
         console.error(`Failed to create ${op.elType}:`, e, { parents })
       }
@@ -309,6 +317,8 @@ export class UndoRedoManager {
         if (this.isJXGPoint(pc) && this.isJXGPoint(pp)) {
           op.pointIds = [pc.id, pp.id]
         }
+        // Force board update to ensure object is created immediately
+        this.board.update()
       } catch (e) {
         console.error('Failed to create circle:', e, { parents })
       }
@@ -318,15 +328,35 @@ export class UndoRedoManager {
 
   private rollbackCreate(op: CreateOp): void {
     if (!op._id) return
+    
     const obj = (this.board.objects as any)[op._id]
-    if (obj) this.board.removeObject(obj as JXG.GeometryElement)
+    if (obj) {
+      try {
+        this.board.removeObject(obj as JXG.GeometryElement)
+      } catch (error) {
+        console.error('Failed to remove object:', error, op._id)
+      }
+    } else {
+      // Try to find and remove by matching definition as fallback
+      this.removeByMatchingDefinition({
+        kind: 'delete',
+        elType: op.elType,
+        payload: op.payload,
+        _id: op._id,
+        pointIds: op.pointIds || []
+      })
+    }
     
     // Remove associated points if they're not used elsewhere
     if (op.pointIds && (op.elType === 'segment' || op.elType === 'line' || op.elType === 'circle')) {
       op.pointIds.forEach((pointId: string) => {
         const pointObj = (this.board.objects as any)[pointId]
         if (pointObj && !this.isPointUsedElsewhere(pointId, pointObj)) {
-          this.board.removeObject(pointObj as JXG.GeometryElement)
+          try {
+            this.board.removeObject(pointObj as JXG.GeometryElement)
+          } catch (error) {
+            console.error('Failed to remove point:', error, pointId)
+          }
         }
       })
     }
@@ -337,10 +367,14 @@ export class UndoRedoManager {
       const target = (this.board.objects as any)[op._id]
       if (target) {
         this.board.removeObject(target as JXG.GeometryElement)
+        // Force board update to ensure object is removed immediately
+        this.board.update()
       }
     } else {
       // If _id is missing, try to find and remove by matching defining points and attributes
       this.removeByMatchingDefinition(op)
+      // Force board update after removing by matching
+      this.board.update()
     }
     
     // Remove associated points if they're not used elsewhere
@@ -351,6 +385,8 @@ export class UndoRedoManager {
           this.board.removeObject(pointObj as JXG.GeometryElement)
         }
       })
+      // Force board update after removing points
+      this.board.update()
     }
   }
 
@@ -403,6 +439,8 @@ export class UndoRedoManager {
       const pt = this.ensurePoint({ x, y }, attr)
       if (!pt) return
       op._id = pt.id
+      // Force board update to ensure point is created immediately
+      this.board.update()
       return
     }
 
@@ -422,6 +460,8 @@ export class UndoRedoManager {
         if (this.isJXGPoint(pA) && this.isJXGPoint(pB)) {
           op.pointIds = [pA.id, pB.id]
         }
+        // Force board update to ensure object is created immediately
+        this.board.update()
       } catch (e) {
         console.error(`Failed to recreate ${op.elType}:`, e, { parents })
       }
@@ -444,6 +484,8 @@ export class UndoRedoManager {
         if (this.isJXGPoint(pc) && this.isJXGPoint(pp)) {
           op.pointIds = [pc.id, pp.id]
         }
+        // Force board update to ensure object is created immediately
+        this.board.update()
       } catch (e) {
         console.error('Failed to recreate circle:', e, { parents })
       }
@@ -507,6 +549,8 @@ export class UndoRedoManager {
         }
       }
     }
+    // Force board update after all bundle operations
+    this.board.update()
   }
 
   private rollbackBundle(op: BundleOp): void {
@@ -536,6 +580,8 @@ export class UndoRedoManager {
         }
       }
     }
+    // Force board update after all bundle rollback operations
+    this.board.update()
   }
 
   private setPointName(pointObj: any, name: string): void {

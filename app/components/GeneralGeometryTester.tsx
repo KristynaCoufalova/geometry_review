@@ -9,6 +9,7 @@ import DraggableProtractor from './DraggableProtractor'
 import { UndoRedoManager } from '../../lib/undo-redo'
 import { GridMode } from '../../lib/grid-manager'
 import { BoardManager, JBoard } from '../../lib/board-manager'
+import { GeometryFactory } from '../../lib/geometry-factory'
 
 const EPS = 0.05
 
@@ -58,6 +59,7 @@ export default function GeneralGeometryTester() {
   const boardManagerRef = useRef<BoardManager | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const undoRedoRef = useRef<UndoRedoManager | null>(null)
+  const geometryFactoryRef = useRef<GeometryFactory | null>(null)
 
   const [tool, setTool] = useState<'mouse'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
   const [selected, setSelected] = useState<any[]>([])
@@ -153,39 +155,21 @@ export default function GeneralGeometryTester() {
 
   // Helper function to get or create points via history system
   const getOrCreatePointViaHistory = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
+    const factory = geometryFactoryRef.current
+    if (!factory) return null
+
     // Use soft snapping for smoother placement - only snap if close to grid
     const snapped = snapToGrid(xy.x, xy.y, gridOption, true)
     
     // Use grid-aware EPS: slightly larger than snap size to catch nearby snapped points
-    const snapSize = gridOption === 'none' ? 0.1 : (gridOption === 'minor' ? 0.1 : 0.25)
-    const checkEPS = Math.max(EPS, snapSize * 0.8) // 80% of snap size for better precision
+    const checkEPS = factory.getNearbyEps(gridOption, EPS)
     
     // try to reuse an existing non-fixed point near the coordinates
-    const objects = Object.values(brd.objects) as any[]
-    const existing = objects.find((o: any) => {
-      if (o?.elType === 'point' && !o.visProp?.fixed) {
-        const p = { x: o.X(), y: o.Y() }
-        return Math.hypot(p.x - snapped.x, p.y - snapped.y) <= checkEPS
-      }
-      return false
-    })
+    const existing = factory.findNearbyPoint(snapped.x, snapped.y, checkEPS)
     if (existing) return existing
 
     // create point at snapped coordinates (with soft snap)
-    const snap = gridOption !== 'none'
-    const snapSizeX = gridOption === 'none' ? 0.25 : (gridOption === 'minor' ? 0.1 : 0.25)
-    const snapSizeY = snapSizeX
-    
-    const pt = brd.create('point', [snapped.x, snapped.y], {
-      name: '', 
-      size: 2, 
-      strokeColor: '#444', 
-      fillColor: '#666',
-      snapToGrid: snap,
-      snapSizeX: snapSizeX,
-      snapSizeY: snapSizeY
-    })
-    ;(pt as any)._rawName = ''
+    const pt = factory.pointWithGrid(snapped.x, snapped.y, gridOption)
     
     // Don't create a separate point operation here - the point will be tracked
     // automatically when the shape operation (segment/line/circle) executes
@@ -195,38 +179,20 @@ export default function GeneralGeometryTester() {
   }, [gridOption])
 
   const createPointSmart = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
+    const factory = geometryFactoryRef.current
+    if (!factory) return null
+
     // Use soft snapping for smoother placement
     const snapped = snapToGrid(xy.x, xy.y, gridOption, true)
     
     // Use grid-aware EPS to check for existing points
-    const snapSize = gridOption === 'none' ? 0.1 : (gridOption === 'minor' ? 0.1 : 0.25)
-    const checkEPS = Math.max(EPS, snapSize * 0.8)
+    const checkEPS = factory.getNearbyEps(gridOption, EPS)
     
     // Check for existing points at snapped location
-    const objects = Object.values(brd.objects) as any[]
-    const existing = objects.find((o: any) => {
-      if (o?.elType === 'point' && !o.visProp?.fixed) {
-        const p = { x: o.X(), y: o.Y() }
-        return Math.hypot(p.x - snapped.x, p.y - snapped.y) <= checkEPS
-      }
-      return false
-    })
+    const existing = factory.findNearbyPoint(snapped.x, snapped.y, checkEPS)
     if (existing) return existing
     
-    const snap = gridOption !== 'none'
-    const snapSizeX = gridOption === 'none' ? 0.25 : (gridOption === 'minor' ? 0.1 : 0.25)
-    const snapSizeY = snapSizeX
-    
-    const pt = brd.create('point', [snapped.x, snapped.y], {
-      name: '', 
-      size: 2, 
-      strokeColor: '#444', 
-      fillColor: '#666',
-      snapToGrid: snap,
-      snapSizeX: snapSizeX,
-      snapSizeY: snapSizeY
-    })
-    ;(pt as any)._rawName = ''
+    const pt = factory.pointWithGrid(snapped.x, snapped.y, gridOption)
     pushCreated(pt)
     return pt
   }, [gridOption])
@@ -269,16 +235,11 @@ export default function GeneralGeometryTester() {
         const snapped = snapToGrid(xy.x, xy.y, gridOptionRef.current, true)
         
         // Check for existing point at snapped location
-        const snapSize = gridOptionRef.current === 'none' ? 0.1 : (gridOptionRef.current === 'minor' ? 0.1 : 0.25)
-        const checkEPS = Math.max(EPS, snapSize * 0.8)
-        const objects = Object.values(brd.objects) as any[]
-        const existing = objects.find((o: any) => {
-          if (o?.elType === 'point' && !o.visProp?.fixed) {
-            const p = { x: o.X(), y: o.Y() }
-            return Math.hypot(p.x - snapped.x, p.y - snapped.y) <= checkEPS
-          }
-          return false
-        })
+        const factory = geometryFactoryRef.current
+        if (!factory) break
+        
+        const checkEPS = factory.getNearbyEps(gridOptionRef.current, EPS)
+        const existing = factory.findNearbyPoint(snapped.x, snapped.y, checkEPS)
         
         if (!existing) {
           const attr = { name:'', size:2, strokeColor:'#444', fillColor:'#666' }
@@ -475,6 +436,9 @@ export default function GeneralGeometryTester() {
 
     const brd = boardManager.getBoard()
 
+    // Create geometry factory
+    geometryFactoryRef.current = new GeometryFactory(brd)
+
     // Optional: global snap-to-grid defaults for points (finer for smoother placement)
     // (You can still override per element in your creators.)
     JXG.Options.point.snapToGrid = true
@@ -492,6 +456,7 @@ export default function GeneralGeometryTester() {
       boardManager.free()
       boardManagerRef.current = null
       undoRedoRef.current = null
+      geometryFactoryRef.current = null
     }
   }, [])
 

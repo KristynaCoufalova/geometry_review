@@ -10,6 +10,7 @@ import { UndoRedoManager } from '../../lib/undo-redo'
 import { GridMode } from '../../lib/grid-manager'
 import { BoardManager, JBoard } from '../../lib/board-manager'
 import { GeometryFactory } from '../../lib/geometry-factory'
+import { SelectionManager } from '../../lib/selection-manager'
 
 const EPS = 0.05
 
@@ -60,9 +61,9 @@ export default function GeneralGeometryTester() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const undoRedoRef = useRef<UndoRedoManager | null>(null)
   const geometryFactoryRef = useRef<GeometryFactory | null>(null)
+  const selectionManagerRef = useRef<SelectionManager | null>(null)
 
   const [tool, setTool] = useState<'mouse'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
-  const [selected, setSelected] = useState<any[]>([])
   const [feedback, setFeedback] = useState('')
   const [data, setData] = useState<any>(null)
   const [createdStack, setCreatedStack] = useState<string[]>([])
@@ -88,7 +89,6 @@ export default function GeneralGeometryTester() {
   const [gridOption, setGridOption] = useState<GridMode>('major')
 
   const toolRef = useRef(tool)
-  const selectedRef = useRef(selected)
   const uiBusyRef = useRef(uiBusy)
   const renameModeRef = useRef(renameMode)
   const gridOptionRef = useRef(gridOption)
@@ -101,7 +101,6 @@ export default function GeneralGeometryTester() {
   const downPosRef = useRef<{x:number,y:number}|null>(null)
   
   useEffect(() => { toolRef.current = tool }, [tool])
-  useEffect(() => { selectedRef.current = selected }, [selected])
   useEffect(() => { uiBusyRef.current = uiBusy }, [uiBusy])
   useEffect(() => { renameModeRef.current = renameMode }, [renameMode])
   useEffect(() => { gridOptionRef.current = gridOption }, [gridOption])
@@ -252,13 +251,16 @@ export default function GeneralGeometryTester() {
         break
       }
       case 'segment': {
-        const first = selectedRef.current[0]
+        const selectionMgr = selectionManagerRef.current
+        if (!selectionMgr) break
+
+        const first = selectionMgr.getFirst()
         if (!first) {
           // first click
           undoRedoRef.current?.begin()
           const p = getOrCreatePointViaHistory(brd, xy)
           if (!p) { undoRedoRef.current?.commit(); break }
-          setSelected([p])
+          selectionMgr.select(p)
           setFeedback('Klikněte na druhý bod')
           // don't commit yet; we'll finish in second click
           break
@@ -267,7 +269,7 @@ export default function GeneralGeometryTester() {
         // second click
         const a:any = first
         const b = getOrCreatePointViaHistory(brd, xy)
-        if (!b) { undoRedoRef.current?.commit(); setSelected([]); break }
+        if (!b) { undoRedoRef.current?.commit(); selectionMgr.clear(); break }
 
         const p1 = { x: a.X(), y: a.Y() }
         const p2 = { x: b.X(), y: b.Y() }
@@ -278,24 +280,27 @@ export default function GeneralGeometryTester() {
           undoRedoRef.current?.pushOperation(op)
         }
         undoRedoRef.current?.commit()
-        setSelected([])
+        selectionMgr.clear()
         setFeedback('Úsečka vytvořena')
         break
       }
       case 'line': {
-        const first = selectedRef.current[0]
+        const selectionMgr = selectionManagerRef.current
+        if (!selectionMgr) break
+
+        const first = selectionMgr.getFirst()
         if (!first) {
           undoRedoRef.current?.begin()
           const p = getOrCreatePointViaHistory(brd, xy)
           if (!p) { undoRedoRef.current?.commit(); break }
-          setSelected([p])
+          selectionMgr.select(p)
           setFeedback('Klikněte na druhý bod')
           break
         }
 
         const a:any = first
         const b = getOrCreatePointViaHistory(brd, xy)
-        if (!b) { undoRedoRef.current?.commit(); setSelected([]); break }
+        if (!b) { undoRedoRef.current?.commit(); selectionMgr.clear(); break }
 
         const p1 = { x: a.X(), y: a.Y() }
         const p2 = { x: b.X(), y: b.Y() }
@@ -306,24 +311,27 @@ export default function GeneralGeometryTester() {
           undoRedoRef.current?.pushOperation(op)
         }
         undoRedoRef.current?.commit()
-        setSelected([])
+        selectionMgr.clear()
         setFeedback('Přímka vytvořena')
         break
       }
       case 'circle': {
-        const first = selectedRef.current[0]
+        const selectionMgr = selectionManagerRef.current
+        if (!selectionMgr) break
+
+        const first = selectionMgr.getFirst()
         if (!first) {
           undoRedoRef.current?.begin()
           const c = getOrCreatePointViaHistory(brd, xy)
           if (!c) { undoRedoRef.current?.commit(); break }
-          setSelected([c])
+          selectionMgr.select(c)
           setFeedback('Klikněte na bod na kružnici')
           break
         }
 
         const c:any = first
         const p = getOrCreatePointViaHistory(brd, xy)
-        if (!p) { undoRedoRef.current?.commit(); setSelected([]); break }
+        if (!p) { undoRedoRef.current?.commit(); selectionMgr.clear(); break }
 
         const center = { x: c.X(), y: c.Y() }
         const on     = { x: p.X(), y: p.Y() }
@@ -334,7 +342,7 @@ export default function GeneralGeometryTester() {
           undoRedoRef.current?.pushOperation(op)
         }
         undoRedoRef.current?.commit()
-        setSelected([])
+        selectionMgr.clear()
         setFeedback('Kružnice vytvořena')
         break
       }
@@ -439,6 +447,9 @@ export default function GeneralGeometryTester() {
     // Create geometry factory
     geometryFactoryRef.current = new GeometryFactory(brd)
 
+    // Create selection manager
+    selectionManagerRef.current = new SelectionManager()
+
     // Optional: global snap-to-grid defaults for points (finer for smoother placement)
     // (You can still override per element in your creators.)
     JXG.Options.point.snapToGrid = true
@@ -457,6 +468,7 @@ export default function GeneralGeometryTester() {
       boardManagerRef.current = null
       undoRedoRef.current = null
       geometryFactoryRef.current = null
+      selectionManagerRef.current = null
     }
   }, [])
 
@@ -600,7 +612,7 @@ export default function GeneralGeometryTester() {
       }
     }
     toRemove.forEach(o => brd.removeObject(o))
-    setSelected([])
+    selectionManagerRef.current?.clear()
     setFeedback('')
     setData(null)
     setCreatedStack([])

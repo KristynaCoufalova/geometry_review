@@ -1030,7 +1030,10 @@ class GridManager {
         this.applyDot(true);
     }
     createLineGrid(step, color, strokeWidth) {
+        var _ref;
         const bbox = this.board.getBoundingBox();
+        // Ensure a shared Set on the board to track grid object ids
+        const gridIds = (_ref = this.board).__gridIds || (_ref.__gridIds = new Set());
         // Create vertical lines
         for(let x = bbox[0]; x <= bbox[2]; x += step){
             const line = this.board.create('line', [
@@ -1055,6 +1058,15 @@ class GridManager {
                 track: false,
                 draggable: false
             });
+            try {
+                gridIds.add(line.id);
+            } catch (e) {}
+            try {
+                var _ref1;
+                ((_ref1 = line).visProp || (_ref1.visProp = {})).pointerEvents = 'none';
+                const node = line.rendNode;
+                if (node) node.style.pointerEvents = 'none';
+            } catch (e) {}
             this.gridLines.push(line);
         }
         // Create horizontal lines
@@ -1081,13 +1093,26 @@ class GridManager {
                 track: false,
                 draggable: false
             });
+            try {
+                gridIds.add(line.id);
+            } catch (e) {}
+            try {
+                var _ref2;
+                ((_ref2 = line).visProp || (_ref2.visProp = {})).pointerEvents = 'none';
+                const node = line.rendNode;
+                if (node) node.style.pointerEvents = 'none';
+            } catch (e) {}
             this.gridLines.push(line);
         }
     }
     clearAll() {
+        const gridIds = this.board.__gridIds;
         this.gridLines.forEach((line)=>{
             try {
                 this.board.removeObject(line);
+            } catch (e) {}
+            try {
+                gridIds === null || gridIds === void 0 ? void 0 : gridIds.delete(line.id);
             } catch (e) {}
         });
         this.gridLines = [];

@@ -31,6 +31,7 @@ export default class SelectObjectsTool {
   private dragging = false
   private dragStartWorld: { x: number, y: number } | null = null
   private marqueeCurve: any | null = null
+  private selectionHelperIds = new Set<string>()
 
   private isGroupDragging = false;
   private dragStartPointer: { x: number; y: number } | null = null;
@@ -79,6 +80,36 @@ export default class SelectObjectsTool {
     if ((this.board as any).containerObj) {
       (this.board as any).containerObj.style.cursor = ''
     }
+  }
+
+  /**
+   * Identify grid lines created by GridManager regardless of stroke width.
+   * Matches exact properties set in GridManager: layer 0, fixed, no label/infobox, not draggable.
+   */
+  private isGridLine(obj: any): boolean {
+    if (!obj) return false
+    // Prefer authoritative ID-based check written by GridManager
+    try {
+      const gridIds: Set<string> | undefined = (this.board as any).__gridIds
+      if (gridIds && gridIds.has(((obj as any).id as string))) return true
+    } catch {}
+    // Fallback: property-based detection
+    if (obj.elType !== 'line') return false
+    const vp: any = (obj as any).visProp || {}
+    if (vp.layer !== 0) return false
+    if (vp.fixed !== true) return false
+    if (vp.withLabel !== false) return false
+    if (vp.showInfobox !== false) return false
+    if (vp.draggable !== false) return false
+    return true
+  }
+
+  /** Return true if object is user-selectable (not a grid line or selection helper). */
+  private isSelectableObject(obj: any): boolean {
+    if (!obj || obj.visProp?.visible === false) return false
+    try { if (this.selectionHelperIds.has(((obj as any).id as string))) return false } catch {}
+    if (this.isGridLine(obj)) return false
+    return true
   }
 
   // -----------------------
@@ -392,21 +423,25 @@ export default class SelectObjectsTool {
       fixed: true,
       withLabel: false
     });
+    try { this.selectionHelperIds.add((p1 as any).id as string) } catch {}
     const p2 = this.board.create('point', [() => data.x2, () => data.y1], {
       visible: false,
       fixed: true,
       withLabel: false
     });
+    try { this.selectionHelperIds.add((p2 as any).id as string) } catch {}
     const p3 = this.board.create('point', [() => data.x2, () => data.y2], {
       visible: false,
       fixed: true,
       withLabel: false
     });
+    try { this.selectionHelperIds.add((p3 as any).id as string) } catch {}
     const p4 = this.board.create('point', [() => data.x1, () => data.y2], {
       visible: false,
       fixed: true,
       withLabel: false
     });
+    try { this.selectionHelperIds.add((p4 as any).id as string) } catch {}
 
     // Create polygon from the 4 points - GeoGebra style (purple/blue with low opacity)
     this.marqueeCurve = this.board.create('polygon', [p1, p2, p3, p4], {
@@ -424,13 +459,15 @@ export default class SelectObjectsTool {
         dash: 1
       }
     });
+    try { this.selectionHelperIds.add(((this.marqueeCurve as any).id as string)) } catch {}
 
     // Store the corner points for cleanup
     (this.marqueeCurve as any)._marqueePoints = [p1, p2, p3, p4];
 
     try {
       (this.marqueeCurve as any)._noHighlight = true;
-      ((this.marqueeCurve as any).visProp ||= {}).pointerEvents = 'none';
+      const vp = (this.marqueeCurve as any).visProp || ((this.marqueeCurve as any).visProp = {});
+      (vp as any).pointerEvents = 'none';
       const node = (this.marqueeCurve as any).rendNode;
       if (node) {
         node.style.pointerEvents = 'none';
@@ -481,10 +518,10 @@ export default class SelectObjectsTool {
     const inside: JEl[] = [];
 
     for (const o of objs) {
-      if (!o || o.visProp?.visible === false) continue;
+      if (!this.isSelectableObject(o)) continue;
       if (o.elType === 'point') {
         const x = o.X(), y = o.Y();
-        if (x >= minx && x <= maxx && y >= miny && y <= maxy && !o.visProp?.fixed) inside.push(o);
+        if (x >= minx && x <= maxx && y >= miny && y <= maxy) inside.push(o);
       } else if (o.elType === 'segment' || o.elType === 'line' || o.elType === 'circle' || o.elType === 'polygon') {
         const bb = (o as any).bounds && (o as any).bounds();
         if (bb) {
@@ -503,7 +540,7 @@ export default class SelectObjectsTool {
   // -----------------------
   private getUnderMouse(e: any): JEl[] {
     const arr = this.board.getAllObjectsUnderMouse(e) as JEl[]
-    return this.sortByPreference(arr.filter(o => o && o.visProp?.visible !== false))
+    return this.sortByPreference(arr.filter(o => this.isSelectableObject(o)))
   }
 
   private sortByPreference(arr: JEl[]): JEl[] {

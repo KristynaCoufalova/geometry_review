@@ -58,6 +58,8 @@ export class GridManager {
 
   private createLineGrid(step: number, color: string, strokeWidth: number) {
     const bbox = this.board.getBoundingBox()
+    // Ensure a shared Set on the board to track grid object ids
+    const gridIds: Set<string> = ((this.board as any).__gridIds ||= new Set<string>())
     
     // Create vertical lines
     for (let x = bbox[0]; x <= bbox[2]; x += step) {
@@ -74,6 +76,12 @@ export class GridManager {
         track: false,
         draggable: false
       })
+      try { gridIds.add((line as any).id as string) } catch {}
+      try {
+        ((line as any).visProp ||= {}).pointerEvents = 'none'
+        const node = (line as any).rendNode
+        if (node) node.style.pointerEvents = 'none'
+      } catch {}
       this.gridLines.push(line)
     }
     
@@ -92,13 +100,21 @@ export class GridManager {
         track: false,
         draggable: false
       })
+      try { gridIds.add((line as any).id as string) } catch {}
+      try {
+        ((line as any).visProp ||= {}).pointerEvents = 'none'
+        const node = (line as any).rendNode
+        if (node) node.style.pointerEvents = 'none'
+      } catch {}
       this.gridLines.push(line)
     }
   }
 
   private clearAll() {
+    const gridIds: Set<string> | undefined = (this.board as any).__gridIds
     this.gridLines.forEach(line => {
       try { this.board.removeObject(line) } catch {}
+      try { gridIds?.delete((line as any).id as string) } catch {}
     })
     this.gridLines = []
   }

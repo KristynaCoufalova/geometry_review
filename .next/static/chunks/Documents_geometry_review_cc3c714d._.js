@@ -4076,7 +4076,10 @@ class GridManager {
         this.applyDot(true);
     }
     createLineGrid(step, color, strokeWidth) {
+        var _ref;
         const bbox = this.board.getBoundingBox();
+        // Ensure a shared Set on the board to track grid object ids
+        const gridIds = (_ref = this.board).__gridIds || (_ref.__gridIds = new Set());
         // Create vertical lines
         for(let x = bbox[0]; x <= bbox[2]; x += step){
             const line = this.board.create('line', [
@@ -4101,6 +4104,15 @@ class GridManager {
                 track: false,
                 draggable: false
             });
+            try {
+                gridIds.add(line.id);
+            } catch (e) {}
+            try {
+                var _ref1;
+                ((_ref1 = line).visProp || (_ref1.visProp = {})).pointerEvents = 'none';
+                const node = line.rendNode;
+                if (node) node.style.pointerEvents = 'none';
+            } catch (e) {}
             this.gridLines.push(line);
         }
         // Create horizontal lines
@@ -4127,13 +4139,26 @@ class GridManager {
                 track: false,
                 draggable: false
             });
+            try {
+                gridIds.add(line.id);
+            } catch (e) {}
+            try {
+                var _ref2;
+                ((_ref2 = line).visProp || (_ref2.visProp = {})).pointerEvents = 'none';
+                const node = line.rendNode;
+                if (node) node.style.pointerEvents = 'none';
+            } catch (e) {}
             this.gridLines.push(line);
         }
     }
     clearAll() {
+        const gridIds = this.board.__gridIds;
         this.gridLines.forEach((line)=>{
             try {
                 this.board.removeObject(line);
+            } catch (e) {}
+            try {
+                gridIds === null || gridIds === void 0 ? void 0 : gridIds.delete(line.id);
             } catch (e) {}
         });
         this.gridLines = [];
@@ -4700,6 +4725,35 @@ class SelectObjectsTool {
             this.board.containerObj.style.cursor = '';
         }
     }
+    /**
+   * Identify grid lines created by GridManager regardless of stroke width.
+   * Matches exact properties set in GridManager: layer 0, fixed, no label/infobox, not draggable.
+   */ isGridLine(obj) {
+        if (!obj) return false;
+        // Prefer authoritative ID-based check written by GridManager
+        try {
+            const gridIds = this.board.__gridIds;
+            if (gridIds && gridIds.has(obj.id)) return true;
+        } catch (e) {}
+        // Fallback: property-based detection
+        if (obj.elType !== 'line') return false;
+        const vp = obj.visProp || {};
+        if (vp.layer !== 0) return false;
+        if (vp.fixed !== true) return false;
+        if (vp.withLabel !== false) return false;
+        if (vp.showInfobox !== false) return false;
+        if (vp.draggable !== false) return false;
+        return true;
+    }
+    /** Return true if object is user-selectable (not a grid line or selection helper). */ isSelectableObject(obj) {
+        var _obj_visProp;
+        if (!obj || ((_obj_visProp = obj.visProp) === null || _obj_visProp === void 0 ? void 0 : _obj_visProp.visible) === false) return false;
+        try {
+            if (this.selectionHelperIds.has(obj.id)) return false;
+        } catch (e) {}
+        if (this.isGridLine(obj)) return false;
+        return true;
+    }
     // -----------------------
     // Hover logic
     // -----------------------
@@ -4839,6 +4893,9 @@ class SelectObjectsTool {
             fixed: true,
             withLabel: false
         });
+        try {
+            this.selectionHelperIds.add(p1.id);
+        } catch (e) {}
         const p2 = this.board.create('point', [
             ()=>data.x2,
             ()=>data.y1
@@ -4847,6 +4904,9 @@ class SelectObjectsTool {
             fixed: true,
             withLabel: false
         });
+        try {
+            this.selectionHelperIds.add(p2.id);
+        } catch (e) {}
         const p3 = this.board.create('point', [
             ()=>data.x2,
             ()=>data.y2
@@ -4855,6 +4915,9 @@ class SelectObjectsTool {
             fixed: true,
             withLabel: false
         });
+        try {
+            this.selectionHelperIds.add(p3.id);
+        } catch (e) {}
         const p4 = this.board.create('point', [
             ()=>data.x1,
             ()=>data.y2
@@ -4863,6 +4926,9 @@ class SelectObjectsTool {
             fixed: true,
             withLabel: false
         });
+        try {
+            this.selectionHelperIds.add(p4.id);
+        } catch (e) {}
         // Create polygon from the 4 points - GeoGebra style (purple/blue with low opacity)
         this.marqueeCurve = this.board.create('polygon', [
             p1,
@@ -4884,6 +4950,9 @@ class SelectObjectsTool {
                 dash: 1
             }
         });
+        try {
+            this.selectionHelperIds.add(this.marqueeCurve.id);
+        } catch (e) {}
         // Store the corner points for cleanup
         this.marqueeCurve._marqueePoints = [
             p1,
@@ -4892,9 +4961,9 @@ class SelectObjectsTool {
             p4
         ];
         try {
-            var _ref;
             this.marqueeCurve._noHighlight = true;
-            ((_ref = this.marqueeCurve).visProp || (_ref.visProp = {})).pointerEvents = 'none';
+            const vp = this.marqueeCurve.visProp || (this.marqueeCurve.visProp = {});
+            vp.pointerEvents = 'none';
             const node = this.marqueeCurve.rendNode;
             if (node) {
                 node.style.pointerEvents = 'none';
@@ -4947,12 +5016,10 @@ class SelectObjectsTool {
         const objs = Object.values(this.board.objects);
         const inside = [];
         for (const o of objs){
-            var _o_visProp;
-            if (!o || ((_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.visible) === false) continue;
+            if (!this.isSelectableObject(o)) continue;
             if (o.elType === 'point') {
-                var _o_visProp1;
                 const x = o.X(), y = o.Y();
-                if (x >= minx && x <= maxx && y >= miny && y <= maxy && !((_o_visProp1 = o.visProp) === null || _o_visProp1 === void 0 ? void 0 : _o_visProp1.fixed)) inside.push(o);
+                if (x >= minx && x <= maxx && y >= miny && y <= maxy) inside.push(o);
             } else if (o.elType === 'segment' || o.elType === 'line' || o.elType === 'circle' || o.elType === 'polygon') {
                 const bb = o.bounds && o.bounds();
                 if (bb) {
@@ -4970,10 +5037,7 @@ class SelectObjectsTool {
     // -----------------------
     getUnderMouse(e) {
         const arr = this.board.getAllObjectsUnderMouse(e);
-        return this.sortByPreference(arr.filter((o)=>{
-            var _o_visProp;
-            return o && ((_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.visible) !== false;
-        }));
+        return this.sortByPreference(arr.filter((o)=>this.isSelectableObject(o)));
     }
     sortByPreference(arr) {
         const rank = (o)=>{
@@ -5041,6 +5105,7 @@ class SelectObjectsTool {
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dragging", false);
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dragStartWorld", null);
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "marqueeCurve", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "selectionHelperIds", new Set());
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "isGroupDragging", false);
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dragStartPointer", null);
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dragStartObjPositions", new Map());

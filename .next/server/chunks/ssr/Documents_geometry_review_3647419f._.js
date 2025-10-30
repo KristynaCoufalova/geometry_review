@@ -3915,6 +3915,8 @@ class GridManager {
     }
     createLineGrid(step, color, strokeWidth) {
         const bbox = this.board.getBoundingBox();
+        // Ensure a shared Set on the board to track grid object ids
+        const gridIds = this.board.__gridIds ||= new Set();
         // Create vertical lines
         for(let x = bbox[0]; x <= bbox[2]; x += step){
             const line = this.board.create('line', [
@@ -3939,6 +3941,14 @@ class GridManager {
                 track: false,
                 draggable: false
             });
+            try {
+                gridIds.add(line.id);
+            } catch  {}
+            try {
+                (line.visProp ||= {}).pointerEvents = 'none';
+                const node = line.rendNode;
+                if (node) node.style.pointerEvents = 'none';
+            } catch  {}
             this.gridLines.push(line);
         }
         // Create horizontal lines
@@ -3965,13 +3975,25 @@ class GridManager {
                 track: false,
                 draggable: false
             });
+            try {
+                gridIds.add(line.id);
+            } catch  {}
+            try {
+                (line.visProp ||= {}).pointerEvents = 'none';
+                const node = line.rendNode;
+                if (node) node.style.pointerEvents = 'none';
+            } catch  {}
             this.gridLines.push(line);
         }
     }
     clearAll() {
+        const gridIds = this.board.__gridIds;
         this.gridLines.forEach((line)=>{
             try {
                 this.board.removeObject(line);
+            } catch  {}
+            try {
+                gridIds?.delete(line.id);
             } catch  {}
         });
         this.gridLines = [];
@@ -4462,6 +4484,7 @@ class SelectObjectsTool {
     dragging = false;
     dragStartWorld = null;
     marqueeCurve = null;
+    selectionHelperIds = new Set();
     isGroupDragging = false;
     dragStartPointer = null;
     dragStartObjPositions = new Map();
@@ -4508,6 +4531,34 @@ class SelectObjectsTool {
         if (this.board.containerObj) {
             this.board.containerObj.style.cursor = '';
         }
+    }
+    /**
+   * Identify grid lines created by GridManager regardless of stroke width.
+   * Matches exact properties set in GridManager: layer 0, fixed, no label/infobox, not draggable.
+   */ isGridLine(obj) {
+        if (!obj) return false;
+        // Prefer authoritative ID-based check written by GridManager
+        try {
+            const gridIds = this.board.__gridIds;
+            if (gridIds && gridIds.has(obj.id)) return true;
+        } catch  {}
+        // Fallback: property-based detection
+        if (obj.elType !== 'line') return false;
+        const vp = obj.visProp || {};
+        if (vp.layer !== 0) return false;
+        if (vp.fixed !== true) return false;
+        if (vp.withLabel !== false) return false;
+        if (vp.showInfobox !== false) return false;
+        if (vp.draggable !== false) return false;
+        return true;
+    }
+    /** Return true if object is user-selectable (not a grid line or selection helper). */ isSelectableObject(obj) {
+        if (!obj || obj.visProp?.visible === false) return false;
+        try {
+            if (this.selectionHelperIds.has(obj.id)) return false;
+        } catch  {}
+        if (this.isGridLine(obj)) return false;
+        return true;
     }
     // -----------------------
     // Core interaction
@@ -4866,6 +4917,9 @@ class SelectObjectsTool {
             fixed: true,
             withLabel: false
         });
+        try {
+            this.selectionHelperIds.add(p1.id);
+        } catch  {}
         const p2 = this.board.create('point', [
             ()=>data.x2,
             ()=>data.y1
@@ -4874,6 +4928,9 @@ class SelectObjectsTool {
             fixed: true,
             withLabel: false
         });
+        try {
+            this.selectionHelperIds.add(p2.id);
+        } catch  {}
         const p3 = this.board.create('point', [
             ()=>data.x2,
             ()=>data.y2
@@ -4882,6 +4939,9 @@ class SelectObjectsTool {
             fixed: true,
             withLabel: false
         });
+        try {
+            this.selectionHelperIds.add(p3.id);
+        } catch  {}
         const p4 = this.board.create('point', [
             ()=>data.x1,
             ()=>data.y2
@@ -4890,6 +4950,9 @@ class SelectObjectsTool {
             fixed: true,
             withLabel: false
         });
+        try {
+            this.selectionHelperIds.add(p4.id);
+        } catch  {}
         // Create polygon from the 4 points - GeoGebra style (purple/blue with low opacity)
         this.marqueeCurve = this.board.create('polygon', [
             p1,
@@ -4911,6 +4974,9 @@ class SelectObjectsTool {
                 dash: 1
             }
         });
+        try {
+            this.selectionHelperIds.add(this.marqueeCurve.id);
+        } catch  {}
         // Store the corner points for cleanup
         this.marqueeCurve._marqueePoints = [
             p1,
@@ -4920,7 +4986,8 @@ class SelectObjectsTool {
         ];
         try {
             this.marqueeCurve._noHighlight = true;
-            (this.marqueeCurve.visProp ||= {}).pointerEvents = 'none';
+            const vp = this.marqueeCurve.visProp || (this.marqueeCurve.visProp = {});
+            vp.pointerEvents = 'none';
             const node = this.marqueeCurve.rendNode;
             if (node) {
                 node.style.pointerEvents = 'none';
@@ -4973,10 +5040,10 @@ class SelectObjectsTool {
         const objs = Object.values(this.board.objects);
         const inside = [];
         for (const o of objs){
-            if (!o || o.visProp?.visible === false) continue;
+            if (!this.isSelectableObject(o)) continue;
             if (o.elType === 'point') {
                 const x = o.X(), y = o.Y();
-                if (x >= minx && x <= maxx && y >= miny && y <= maxy && !o.visProp?.fixed) inside.push(o);
+                if (x >= minx && x <= maxx && y >= miny && y <= maxy) inside.push(o);
             } else if (o.elType === 'segment' || o.elType === 'line' || o.elType === 'circle' || o.elType === 'polygon') {
                 const bb = o.bounds && o.bounds();
                 if (bb) {
@@ -4994,7 +5061,7 @@ class SelectObjectsTool {
     // -----------------------
     getUnderMouse(e) {
         const arr = this.board.getAllObjectsUnderMouse(e);
-        return this.sortByPreference(arr.filter((o)=>o && o.visProp?.visible !== false));
+        return this.sortByPreference(arr.filter((o)=>this.isSelectableObject(o)));
     }
     sortByPreference(arr) {
         const rank = (o)=>{

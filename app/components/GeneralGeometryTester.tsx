@@ -13,6 +13,8 @@ import { GeometryFactory } from '../../lib/geometry-factory'
 import { SelectionManager } from '../../lib/selection-manager'
 import { RenameManager } from '../../lib/rename-manager'
 import { WORLD_PER_MM, WORLD_PER_CM } from '../../lib/measurement-scale'
+import { UNIT_LABEL } from '../../lib/measurement-scale'
+import { exportBoard, importBoard } from '../../lib/board-serializer'
 import SelectObjectsTool from '../../lib/select-objects-tool'
 
 const EPS = 0.05
@@ -603,13 +605,39 @@ export default function GeneralGeometryTester() {
       const brd = boardManagerRef.current?.getBoard()
       if (!brd) return
 
+      const serializeGeometry = (obj: any) => {
+        const type = obj.elType
+        if (type === 'point') {
+          return { x: obj.X(), y: obj.Y() }
+        }
+        if (type === 'segment' || type === 'line') {
+          const p1 = (obj.points && obj.points[0]) ? obj.points[0] : null
+          const p2 = (obj.points && obj.points[1]) ? obj.points[1] : null
+          return p1 && p2 ? { x1: p1.X(), y1: p1.Y(), x2: p2.X(), y2: p2.Y() } : null
+        }
+        if (type === 'circle') {
+          const c = obj.center
+          const on = obj.point2 || (obj.points && obj.points[1]) || null
+          const center = c ? { x: c.X(), y: c.Y() } : null
+          const radius = (c && on) ? Math.hypot(on.X() - c.X(), on.Y() - c.Y()) : (typeof obj.R === 'function' ? obj.R() : undefined)
+          return { center, radius }
+        }
+        if (type === 'polygon') {
+          const verts = Array.isArray(obj.vertices) ? obj.vertices.map((v:any)=>({ x: v.X(), y: v.Y() })) : []
+          return { vertices: verts }
+        }
+        return null
+      }
+
       const constructionData = {
         timestamp: new Date().toISOString(),
+        unit: UNIT_LABEL,
+        boundingBoxCm: brd.getBoundingBox(),
         objects: Object.values(brd.objects).map((obj: any) => ({
           id: obj.id,
           type: obj.elType,
           name: obj.name,
-          properties: obj.visProp
+          geometry: serializeGeometry(obj)
         })),
         createdStack: [...createdStack],
         gridOption: gridOption,
@@ -680,24 +708,64 @@ export default function GeneralGeometryTester() {
     const brd = boardManagerRef.current?.getBoard()
     if (!brd) return
     const timestamp = new Date().toISOString()
-    const constructionData = {
-      timestamp,
-      objects: Object.values(brd.objects).map((obj: any) => ({
-        id: obj.id,
-        type: obj.elType,
-        name: obj.name,
-        properties: obj.visProp
-      })),
-      createdStack: [...createdStack]
+    const serializeGeometry = (obj: any) => {
+      const type = obj.elType
+      if (type === 'point') {
+        return { x: obj.X(), y: obj.Y() }
+      }
+      if (type === 'segment' || type === 'line') {
+        const p1 = (obj.points && obj.points[0]) ? obj.points[0] : (obj.point1 || null)
+        const p2 = (obj.points && obj.points[1]) ? obj.points[1] : (obj.point2 || null)
+        return p1 && p2 ? { x1: p1.X(), y1: p1.Y(), x2: p2.X(), y2: p2.Y() } : null
+      }
+      if (type === 'circle') {
+        const c = obj.center
+        const on = obj.point2 || (obj.points && obj.points[1]) || null
+        const center = c ? { x: c.X(), y: c.Y() } : null
+        const radius = (c && on) ? Math.hypot(on.X() - c.X(), on.Y() - c.Y()) : (typeof obj.R === 'function' ? obj.R() : undefined)
+        return { center, radius }
+      }
+      if (type === 'polygon') {
+        const verts = Array.isArray(obj.vertices) ? obj.vertices.map((v:any)=>({ x: v.X(), y: v.Y() })) : []
+        return { vertices: verts }
+      }
+      return null
     }
+
+    const constructionData = { ...exportBoard(brd), createdStack: [...createdStack] }
     setData(constructionData)
     setConstructionHistory(prev => [...prev, constructionData])
     setFeedback('Konstrukce uložena')
   }
 
   function exportConstruction() {
-    if (!data) return
-    const dataStr = JSON.stringify(data, null, 2)
+    const brd = boardManagerRef.current?.getBoard()
+    if (!brd) return
+    const serializeGeometry = (obj: any) => {
+      const type = obj.elType
+      if (type === 'point') {
+        return { x: obj.X(), y: obj.Y() }
+      }
+    if (type === 'segment' || type === 'line') {
+        const p1 = (obj.points && obj.points[0]) ? obj.points[0] : (obj.point1 || null)
+        const p2 = (obj.points && obj.points[1]) ? obj.points[1] : (obj.point2 || null)
+        return p1 && p2 ? { x1: p1.X(), y1: p1.Y(), x2: p2.X(), y2: p2.Y() } : null
+      }
+      if (type === 'circle') {
+        const c = obj.center
+        const on = obj.point2 || (obj.points && obj.points[1]) || null
+        const center = c ? { x: c.X(), y: c.Y() } : null
+        const radius = (c && on) ? Math.hypot(on.X() - c.X(), on.Y() - c.Y()) : (typeof obj.R === 'function' ? obj.R() : undefined)
+        return { center, radius }
+      }
+      if (type === 'polygon') {
+        const verts = Array.isArray(obj.vertices) ? obj.vertices.map((v:any)=>({ x: v.X(), y: v.Y() })) : []
+        return { vertices: verts }
+      }
+      return null
+    }
+    const snapshot = exportBoard(brd)
+    const dataStr = JSON.stringify(snapshot, null, 2)
     const dataBlob = new Blob([dataStr], { type: 'application/json' })
     const url = URL.createObjectURL(dataBlob)
     const link = document.createElement('a')
@@ -731,9 +799,58 @@ export default function GeneralGeometryTester() {
     
     // Clear current construction
     clearAll()
-    
-    // Restore objects from data
-    // This is a simplified restoration - in a real implementation you'd need more sophisticated logic
+
+    const objs = Array.isArray(data.objects) ? data.objects : []
+
+    // Create maps for created elements
+    const createdById: Record<string, any> = {}
+
+    // Helper: apply visual properties and name
+    const applyAttrs = (el: any, src: any) => {
+      try {
+        // Ensure element is visible by default
+        const base: any = { visible: true }
+        if (src?.type === 'segment') {
+          base.strokeWidth = 2
+        }
+        if (src?.type === 'line') {
+          base.strokeWidth = 1
+        }
+        if (src?.type === 'circle') {
+          base.strokeWidth = 2
+        }
+        if (typeof el?.setAttribute === 'function') {
+          el.setAttribute(base)
+        }
+        if (src?.properties && typeof el?.setAttribute === 'function') {
+          // Whitelist only safe visual properties to avoid breaking objects
+          const p = src.properties
+          const safe: any = {}
+          const allow = ['strokeColor','strokeWidth','dash','fillColor','size','withLabel','visible','fixed']
+          for (const k of allow) {
+            if (p && Object.prototype.hasOwnProperty.call(p, k)) safe[k] = p[k]
+          }
+          el.setAttribute(safe)
+        }
+        const name = src?.name || ''
+        if (typeof el?.setAttribute === 'function') {
+          el.setAttribute({ name, withLabel: !!name })
+        }
+        if (src?.id) { try { (el as any).id = src.id } catch {} }
+      } catch {}
+    }
+
+    // Use library importer
+    importBoard(brd, { objects: objs })
+
+    // Optional: restore grid and tool positions if present
+    if (data.gridOption) setGridOption(data.gridOption)
+    if (data.rulerPosition) setRulerPosition(data.rulerPosition)
+    if (data.trianglePosition) setTrianglePosition(data.trianglePosition)
+    if (data.protractorPosition) setProtractorPosition(data.protractorPosition)
+    if (data.rulerVisible !== undefined) setRulerVisible(data.rulerVisible)
+    if (data.triangleVisible !== undefined) setTriangleVisible(data.triangleVisible)
+    if (data.protractorVisible !== undefined) setProtractorVisible(data.protractorVisible)
     setFeedback('Konstrukce načtena')
   }
 

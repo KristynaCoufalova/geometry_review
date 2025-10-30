@@ -1,3 +1,4 @@
+import { exportBoard } from '../../lib/board-serializer'
 'use client'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
@@ -848,13 +849,33 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     if (!boardManagerRef.current || !attempt) return
 
     const validation = validateConstruction()
+    const brd = boardManagerRef.current.getBoard()
+    const serializeGeometry = (obj: any) => {
+      const type = obj.elType
+      if (type === 'point') {
+        return { x: obj.X(), y: obj.Y() }
+      }
+      if (type === 'segment' || type === 'line') {
+        const p1 = (obj.points && obj.points[0]) ? obj.points[0] : null
+        const p2 = (obj.points && obj.points[1]) ? obj.points[1] : null
+        return p1 && p2 ? { x1: p1.X(), y1: p1.Y(), x2: p2.X(), y2: p2.Y() } : null
+      }
+      if (type === 'circle') {
+        const c = obj.center
+        const on = obj.point2 || (obj.points && obj.points[1]) || null
+        const center = c ? { x: c.X(), y: c.Y() } : null
+        const radius = (c && on) ? Math.hypot(on.X() - c.X(), on.Y() - c.Y()) : (typeof obj.R === 'function' ? obj.R() : undefined)
+        return { center, radius }
+      }
+      if (type === 'polygon') {
+        const verts = Array.isArray(obj.vertices) ? obj.vertices.map((v:any)=>({ x: v.X(), y: v.Y() })) : []
+        return { vertices: verts }
+      }
+      return null
+    }
+    const snapshot = exportBoard(brd)
     const currentState = {
-      objects: Object.values(boardManagerRef.current.getBoard().objects).map((obj: any) => ({
-        id: obj.id,
-        type: obj.elType,
-        name: obj.name,
-        properties: obj.visProp
-      })),
+      ...snapshot,
       timestamp: new Date().toISOString()
     }
 

@@ -1,5 +1,6 @@
 // lib/grid-manager.ts
 import JXG from 'jsxgraph'
+import { WORLD_PER_CM, WORLD_PER_MM } from './measurement-scale'
 
 export type GridMode = 'none' | 'major' | 'minor' | 'major-minor' | 'dot'
 type JBoard = JXG.Board & { renderer: any }
@@ -7,7 +8,7 @@ type JBoard = JXG.Board & { renderer: any }
 export class GridManager {
   private gridLines: any[] = []
   private mode: GridMode = 'none'
-  private dotStep = 0.5 // world units
+  private dotStep = WORLD_PER_MM // world units (1 mm)
   private container: HTMLElement
 
   constructor(private board: JBoard, container: HTMLElement) {
@@ -25,16 +26,16 @@ export class GridManager {
         this.applyDot(false)
         break
       case 'major':
-        this.createLineGrid(1.0, '#e5e7eb', 1)
+        this.createLineGrid(WORLD_PER_CM, '#e5e7eb', 1)
         this.applyDot(false)
         break
       case 'minor':
-        this.createLineGrid(0.2, '#f3f4f6', 0.5)
+        this.createLineGrid(WORLD_PER_MM, '#f3f4f6', 0.5)
         this.applyDot(false)
         break
       case 'major-minor':
-        this.createLineGrid(0.2, '#f3f4f6', 0.5)
-        this.createLineGrid(1.0, '#d1d5db', 1)
+        this.createLineGrid(WORLD_PER_MM, '#f3f4f6', 0.5)
+        this.createLineGrid(WORLD_PER_CM, '#d1d5db', 1)
         this.applyDot(false)
         break
       case 'dot':

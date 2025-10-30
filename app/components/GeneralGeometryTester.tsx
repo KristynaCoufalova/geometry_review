@@ -12,6 +12,7 @@ import { BoardManager, JBoard } from '../../lib/board-manager'
 import { GeometryFactory } from '../../lib/geometry-factory'
 import { SelectionManager } from '../../lib/selection-manager'
 import { RenameManager } from '../../lib/rename-manager'
+import { WORLD_PER_MM, WORLD_PER_CM } from '../../lib/measurement-scale'
 
 const EPS = 0.05
 
@@ -23,15 +24,15 @@ function dist(a: {x:number,y:number}, b:{x:number,y:number}) {
 function snapToGrid(x: number, y: number, gridOption: GridMode, softSnap: boolean = false): {x: number, y: number} {
   if (gridOption === 'none') return { x, y }
   
-  let snapSize = 0.5 // default minor grid spacing
+  let snapSize = WORLD_PER_MM // default fine snap = 1 mm
   
   // Fine-tuned snap sizes for smoother placement
   if (gridOption === 'major' || gridOption === 'major-minor') {
-    snapSize = 0.25 // finer snap for major grid
+    snapSize = WORLD_PER_CM // snap to 1 cm for major
   } else if (gridOption === 'minor') {
-    snapSize = 0.1 // very fine snap for minor grid
+    snapSize = WORLD_PER_MM // 1 mm
   } else if (gridOption === 'dot') {
-    snapSize = 0.25 // fine snap for dot grid
+    snapSize = WORLD_PER_MM
   }
   
   // Soft snap: only snap if close to grid line (within 30% of snap size)
@@ -489,8 +490,8 @@ export default function GeneralGeometryTester() {
     // Optional: global snap-to-grid defaults for points (finer for smoother placement)
     // (You can still override per element in your creators.)
     JXG.Options.point.snapToGrid = true
-    JXG.Options.point.snapSizeX = 0.25
-    JXG.Options.point.snapSizeY = 0.25
+    JXG.Options.point.snapSizeX = WORLD_PER_MM
+    JXG.Options.point.snapSizeY = WORLD_PER_MM
 
     // Init undo/redo
     undoRedoRef.current = new UndoRedoManager({

@@ -2,6 +2,7 @@
 import JXG from 'jsxgraph'
 import { JBoard } from './board-manager'
 import { GridMode } from './grid-manager'
+import { WORLD_PER_MM, WORLD_PER_CM } from './measurement-scale'
 
 export type CreateAttrs = Partial<JXG.Options>
 
@@ -12,23 +13,23 @@ export class GeometryFactory {
    * Get snap size based on grid mode
    */
   getSnapSize(gridMode: GridMode): number {
-    if (gridMode === 'none') return 0.25
-    if (gridMode === 'minor') return 0.1
-    return 0.25
+    if (gridMode === 'none') return WORLD_PER_MM
+    if (gridMode === 'minor') return WORLD_PER_MM
+    return WORLD_PER_CM
   }
 
   /**
    * Get EPS for finding nearby points based on grid mode
    */
   getNearbyEps(gridMode: GridMode, baseEps: number = 0.05): number {
-    const snapSize = gridMode === 'none' ? 0.1 : (gridMode === 'minor' ? 0.1 : 0.25)
+    const snapSize = this.getSnapSize(gridMode)
     return Math.max(baseEps, snapSize * 0.8)
   }
 
   point(x: number, y: number, snap = true, attrs: CreateAttrs = {}) {
     const pt = this.board.create('point', [x, y], {
       name: '', size: 2, strokeColor: '#444', fillColor: '#666',
-      snapToGrid: snap, snapSizeX: 0.5, snapSizeY: 0.5,
+      snapToGrid: snap, snapSizeX: WORLD_PER_MM, snapSizeY: WORLD_PER_MM,
       ...attrs
     })
     ;(pt as any)._rawName = ''

@@ -1,6 +1,8 @@
-(globalThis.TURBOPACK_CHUNK_LISTS || (globalThis.TURBOPACK_CHUNK_LISTS = [])).push({
-    script: typeof document === "object" ? document.currentScript : undefined,
-    chunks: [
+(globalThis.TURBOPACK || (globalThis.TURBOPACK = [])).push([typeof document === "object" ? document.currentScript : undefined,
+"[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx [app-client] (ecmascript, next/dynamic entry, async loader)", ((__turbopack_context__) => {
+
+__turbopack_context__.v((parentImport) => {
+    return Promise.all([
   "static/chunks/Documents_geometry_review_b34c6465._.js",
   "static/chunks/c0305_jsxgraph_src_base_coordselement_e728303b.js",
   "static/chunks/c0305_jsxgraph_src_base_board_3302944f.js",
@@ -15,7 +17,11 @@
   "static/chunks/c0305_jsxgraph_src_element_2757da74._.js",
   "static/chunks/c0305_jsxgraph_src_3d_993ddeaa._.js",
   "static/chunks/c0305_jsxgraph_src_4db65172._.js",
-  "static/chunks/c0305_78407119._.js"
-],
-    source: "dynamic"
+  "static/chunks/c0305_78407119._.js",
+  "static/chunks/Documents_geometry_review_app_components_GeometryConstructionTester_tsx_8b5fb952._.js"
+].map((chunk) => __turbopack_context__.l(chunk))).then(() => {
+        return parentImport("[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx [app-client] (ecmascript, next/dynamic entry)");
+    });
 });
+}),
+]);

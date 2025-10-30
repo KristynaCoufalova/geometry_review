@@ -200,7 +200,17 @@ export default class SelectObjectsTool {
             case 'circle':
               this.dragStartObjPositions.set(obj, {
                 center: { x: obj.center.X(), y: obj.center.Y() },
-                radius: obj.R() // Not always needed, but for completeness
+              radius: (typeof obj.R === 'function')
+                ? obj.R()
+                : (() => {
+                    const onPt: any = (obj as any).point2 || (obj as any).points?.[1]
+                    if (onPt && typeof onPt.X === 'function' && typeof onPt.Y === 'function') {
+                      const dx = onPt.X() - obj.center.X()
+                      const dy = onPt.Y() - obj.center.Y()
+                      return Math.hypot(dx, dy)
+                    }
+                    return undefined
+                  })()
               });
               break;
             case 'polygon':

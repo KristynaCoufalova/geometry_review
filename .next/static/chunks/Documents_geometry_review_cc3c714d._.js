@@ -5236,7 +5236,16 @@ class SelectObjectsTool {
                                         x: obj.center.X(),
                                         y: obj.center.Y()
                                     },
-                                    radius: obj.R() // Not always needed, but for completeness
+                                    radius: typeof obj.R === 'function' ? obj.R() : (()=>{
+                                        var _points;
+                                        const onPt = obj.point2 || ((_points = obj.points) === null || _points === void 0 ? void 0 : _points[1]);
+                                        if (onPt && typeof onPt.X === 'function' && typeof onPt.Y === 'function') {
+                                            const dx = onPt.X() - obj.center.X();
+                                            const dy = onPt.Y() - obj.center.Y();
+                                            return Math.hypot(dx, dy);
+                                        }
+                                        return undefined;
+                                    })()
                                 });
                                 break;
                             case 'polygon':

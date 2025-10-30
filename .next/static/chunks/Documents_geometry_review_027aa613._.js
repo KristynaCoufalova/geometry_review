@@ -1,4 +1,1566 @@
 (globalThis.TURBOPACK || (globalThis.TURBOPACK = [])).push([typeof document === "object" ? document.currentScript : undefined,
+"[project]/Documents/geometry_review/lib/undo-redo.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+/**
+ * Standalone Undo/Redo System for JSXGraph Geometry
+ * 
+ * This module provides a clean, isolated undo/redo system that can be easily
+ * integrated into any JSXGraph-based geometry application.
+ */ __turbopack_context__.s([
+    "UndoRedoManager",
+    ()=>UndoRedoManager
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/@swc/helpers/esm/_define_property.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/jsxgraph/src/index.js [app-client] (ecmascript)");
+;
+;
+class UndoRedoManager {
+    withinTol(a, b) {
+        let tol = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : this.EPS;
+        return Math.abs(a - b) <= tol;
+    }
+    withSuppressed(fn) {
+        const prev = this.suppressTracking;
+        this.suppressTracking = true;
+        try {
+            return fn();
+        } finally{
+            this.suppressTracking = prev;
+        }
+    }
+    // Public API
+    pushOperation(op) {
+        const frozen = structuredClone(op);
+        this.withSuppressed(()=>this.performOperation(frozen));
+        if (this.txnDepth > 0) {
+            this.pendingOps.push(frozen);
+        } else {
+            this.undoStack.push(frozen);
+            this.redoStack = []; // Clear redo stack on new operation
+        }
+    }
+    begin() {
+        this.txnDepth++;
+    }
+    commit() {
+        if (this.txnDepth === 0) return;
+        this.txnDepth--;
+        if (this.txnDepth > 0) return;
+        if (this.pendingOps.length === 0) return;
+        // compress: push a synthetic op that replays the batch
+        const bundle = structuredClone(this.pendingOps);
+        this.pendingOps = [];
+        this.undoStack.push({
+            kind: 'bundle',
+            ops: bundle
+        });
+        this.redoStack = [];
+    }
+    undo() {
+        var _this_onFeedback, _this;
+        if (this.undoStack.length === 0) return;
+        const op = this.undoStack.pop();
+        const frozen = structuredClone(op);
+        this.suppressTracking = true;
+        try {
+            this.rollbackOperation(frozen);
+        } finally{
+            this.suppressTracking = false;
+        }
+        this.redoStack.push(frozen);
+        this.board.update();
+        (_this_onFeedback = (_this = this).onFeedback) === null || _this_onFeedback === void 0 ? void 0 : _this_onFeedback.call(_this, '');
+    }
+    redo() {
+        var _this_onFeedback, _this;
+        if (this.redoStack.length === 0) return;
+        const op = this.redoStack.pop();
+        const frozen = structuredClone(op);
+        this.suppressTracking = true;
+        try {
+            this.performOperation(frozen);
+        } finally{
+            this.suppressTracking = false;
+        }
+        this.undoStack.push(frozen);
+        this.board.update();
+        (_this_onFeedback = (_this = this).onFeedback) === null || _this_onFeedback === void 0 ? void 0 : _this_onFeedback.call(_this, '');
+    }
+    canUndo() {
+        return this.undoStack.length > 0;
+    }
+    canRedo() {
+        return this.redoStack.length > 0;
+    }
+    clear() {
+        this.undoStack = [];
+        this.redoStack = [];
+    }
+    dispose() {
+        this.moveStarts.clear();
+        if (this.trackingInterval) {
+            clearInterval(this.trackingInterval);
+            this.trackingInterval = null;
+        }
+    }
+    setupGlobalPointTracking() {
+        // Attach tracking to all existing points
+        this.attachTrackingToAllPoints();
+        // Set up a periodic check to attach tracking to any new points
+        this.trackingInterval = setInterval(()=>{
+            this.attachTrackingToAllPoints();
+        }, 1000); // Check every second
+    }
+    attachTrackingToAllPoints() {
+        const objects = Object.values(this.board.objects);
+        for (const obj of objects){
+            var _obj_visProp;
+            if ((obj === null || obj === void 0 ? void 0 : obj.elType) === 'point' && !((_obj_visProp = obj.visProp) === null || _obj_visProp === void 0 ? void 0 : _obj_visProp.fixed)) {
+                this.attachPointTracking(obj);
+            }
+        }
+    }
+    posOf(pt) {
+        return {
+            x: pt.X(),
+            y: pt.Y(),
+            name: pt._rawName || ''
+        };
+    }
+    definingPointsOf(obj) {
+        if (!obj) return [];
+        if (obj.elType === 'segment' || obj.elType === 'line') {
+            var _obj_points, _obj_points1;
+            const a = obj.point1 || obj.A || ((_obj_points = obj.points) === null || _obj_points === void 0 ? void 0 : _obj_points[0]);
+            const b = obj.point2 || obj.B || ((_obj_points1 = obj.points) === null || _obj_points1 === void 0 ? void 0 : _obj_points1[1]);
+            return [
+                a,
+                b
+            ].filter(Boolean);
+        }
+        if (obj.elType === 'circle') {
+            var _obj_points2, _obj_points3;
+            const c = obj.center || ((_obj_points2 = obj.points) === null || _obj_points2 === void 0 ? void 0 : _obj_points2[0]);
+            const p = obj.point2 || ((_obj_points3 = obj.points) === null || _obj_points3 === void 0 ? void 0 : _obj_points3[1]);
+            return [
+                c,
+                p
+            ].filter(Boolean);
+        }
+        return [];
+    }
+    attachPointTracking(pt) {
+        // Avoid double-binding
+        if (pt._undoRedoBound) return;
+        pt._undoRedoBound = true;
+        pt.on('down', ()=>{
+            if (this.suppressTracking) return;
+            this.moveStarts.set(pt.id, this.posOf(pt));
+        });
+        pt.on('up', ()=>{
+            if (this.suppressTracking) return;
+            const start = this.moveStarts.get(pt.id);
+            if (!start) return;
+            const end = this.posOf(pt);
+            const moved = !this.withinTol(start.x, end.x) || !this.withinTol(start.y, end.y) || start.name !== end.name;
+            if (moved) {
+                const op = {
+                    kind: 'modify',
+                    pointId: pt.id,
+                    before: start,
+                    after: end
+                };
+                this.pushOperation(op);
+            }
+            this.moveStarts.delete(pt.id);
+        });
+    }
+    attachShapeTracking(obj) {
+        // For segment/line/circle: record a BUNDLE of point moves
+        let before = null;
+        let pts = [];
+        const onDown = ()=>{
+            if (this.suppressTracking) return;
+            pts = this.definingPointsOf(obj);
+            if (pts.length === 0) return;
+            before = {};
+            for (const p of pts)before[p.id] = this.posOf(p);
+        };
+        const onUp = ()=>{
+            if (this.suppressTracking || !before || pts.length === 0) return;
+            const ops = [];
+            for (const p of pts){
+                const b = before[p.id];
+                if (!b) continue;
+                const a = this.posOf(p);
+                if (b.x !== a.x || b.y !== a.y || b.name !== a.name) {
+                    ops.push({
+                        kind: 'modify',
+                        pointId: p.id,
+                        before: b,
+                        after: a
+                    });
+                }
+            }
+            if (ops.length === 1 && ops[0]) {
+                this.pushOperation(ops[0]); // single move
+            } else if (ops.length > 1) {
+                this.pushOperation({
+                    kind: 'bundle',
+                    ops
+                }); // move both endpoints / center+radius
+            }
+            before = null;
+            pts = [];
+        };
+        obj.on('down', onDown);
+        obj.on('up', onUp);
+    }
+    findPointNear(xy) {
+        let tol = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : this.EPS;
+        const objs = Object.values(this.board.objects);
+        for (const o of objs){
+            if ((o === null || o === void 0 ? void 0 : o.elType) === 'point') {
+                const p = {
+                    x: o.X(),
+                    y: o.Y()
+                };
+                if (Math.hypot(p.x - xy.x, p.y - xy.y) <= tol) return o;
+            }
+        }
+        return null;
+    }
+    isJXGPoint(p) {
+        return !!(p && p.elType === 'point' && typeof p.X === 'function' && typeof p.Y === 'function' && p.board === this.board);
+    }
+    getPointByIdOrNear(prefId, xy) {
+        let tol = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : this.EPS;
+        if (prefId) {
+            const byId = this.board.objects[prefId];
+            if ((byId === null || byId === void 0 ? void 0 : byId.elType) === 'point') return byId;
+        }
+        // exact coordinate match first
+        for (const o of Object.values(this.board.objects)){
+            if ((o === null || o === void 0 ? void 0 : o.elType) === 'point' && o.X() === xy.x && o.Y() === xy.y) return o;
+        }
+        // then proximity
+        const nearPoint = this.findPointNear(xy, tol);
+        if (nearPoint) return nearPoint;
+        // If no point found, return null (will be handled by fallback in calling code)
+        return null;
+    }
+    ensurePoint(xy) {
+        let attr = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {
+            name: '',
+            size: 2,
+            strokeColor: '#444',
+            fillColor: '#666'
+        };
+        const existing = this.findPointNear(xy);
+        if (existing) {
+            this.attachPointTracking(existing);
+            return existing;
+        }
+        try {
+            const pt = this.board.create('point', [
+                xy.x,
+                xy.y
+            ], attr);
+            if (!this.isJXGPoint(pt)) throw new Error('Invalid point');
+            var _attr_name;
+            pt._rawName = (_attr_name = attr === null || attr === void 0 ? void 0 : attr.name) !== null && _attr_name !== void 0 ? _attr_name : '';
+            if ((attr === null || attr === void 0 ? void 0 : attr.fixed) !== undefined) pt.setAttribute({
+                fixed: attr.fixed
+            });
+            if ((attr === null || attr === void 0 ? void 0 : attr.withLabel) !== undefined) pt.setAttribute({
+                withLabel: attr.withLabel
+            });
+            // Attach move tracking to the new point
+            this.attachPointTracking(pt);
+            return pt;
+        } catch (error) {
+            console.error('Failed to create point:', error);
+            return null;
+        }
+    }
+    performOperation(op) {
+        if (op.kind === 'create') {
+            this.performCreate(op);
+        } else if (op.kind === 'delete') {
+            this.performDelete(op);
+        } else if (op.kind === 'modify') {
+            this.performModify(op);
+        } else if (op.kind === 'bundle') {
+            this.performBundle(op);
+        }
+    }
+    rollbackOperation(op) {
+        if (op.kind === 'create') {
+            this.rollbackCreate(op);
+        } else if (op.kind === 'delete') {
+            this.rollbackDelete(op);
+        } else if (op.kind === 'modify') {
+            this.rollbackModify(op);
+        } else if (op.kind === 'bundle') {
+            this.rollbackBundle(op);
+        }
+    }
+    performCreate(op) {
+        if (op.elType === 'point') {
+            const { x, y, attr } = op.payload;
+            const pt = this.ensurePoint({
+                x,
+                y
+            }, attr);
+            if (!pt) return;
+            op._id = pt.id;
+            // Force board update to ensure point is created immediately
+            this.board.update();
+            return;
+        }
+        if (op.elType === 'segment' || op.elType === 'line') {
+            var _op_pointIds, _op_pointIds1;
+            const { p1, p2, attr } = op.payload;
+            const a = this.getPointByIdOrNear((_op_pointIds = op.pointIds) === null || _op_pointIds === void 0 ? void 0 : _op_pointIds[0], p1) || this.ensurePoint(p1, attr);
+            const b = this.getPointByIdOrNear((_op_pointIds1 = op.pointIds) === null || _op_pointIds1 === void 0 ? void 0 : _op_pointIds1[1], p2) || this.ensurePoint(p2, attr);
+            // If either isn't a real JSXGraph point, fall back to coordinate parents
+            const useCoords = !(this.isJXGPoint(a) && this.isJXGPoint(b));
+            const parents = useCoords ? [
+                [
+                    p1.x,
+                    p1.y
+                ],
+                [
+                    p2.x,
+                    p2.y
+                ]
+            ] : [
+                a,
+                b
+            ];
+            try {
+                var _points, _points1;
+                const el = this.board.create(op.elType, parents, attr);
+                op._id = el.id;
+                // capture actual point ids (works for both segment & line)
+                const pA = el.point1 || el.A || ((_points = el.points) === null || _points === void 0 ? void 0 : _points[0]);
+                const pB = el.point2 || el.B || ((_points1 = el.points) === null || _points1 === void 0 ? void 0 : _points1[1]);
+                if (this.isJXGPoint(pA) && this.isJXGPoint(pB)) {
+                    op.pointIds = [
+                        pA.id,
+                        pB.id
+                    ];
+                    // Attach tracking to the endpoint points if they don't have it yet
+                    this.attachPointTracking(pA);
+                    this.attachPointTracking(pB);
+                }
+                // Attach shape tracking to the element itself
+                this.attachShapeTracking(el);
+                // Force board update to ensure object is created immediately
+                this.board.update();
+            } catch (e) {
+                console.error("Failed to create ".concat(op.elType, ":"), e, {
+                    parents
+                });
+            }
+            return;
+        }
+        if (op.elType === 'circle') {
+            var _op_pointIds2, _op_pointIds3;
+            const { center, on, attr } = op.payload;
+            const c = this.getPointByIdOrNear((_op_pointIds2 = op.pointIds) === null || _op_pointIds2 === void 0 ? void 0 : _op_pointIds2[0], center) || this.ensurePoint(center, attr);
+            const p = this.getPointByIdOrNear((_op_pointIds3 = op.pointIds) === null || _op_pointIds3 === void 0 ? void 0 : _op_pointIds3[1], on) || this.ensurePoint(on, attr);
+            const useCoords = !(this.isJXGPoint(c) && this.isJXGPoint(p));
+            const parents = useCoords ? [
+                [
+                    center.x,
+                    center.y
+                ],
+                [
+                    on.x,
+                    on.y
+                ]
+            ] : [
+                c,
+                p
+            ];
+            try {
+                var _points2, _points3;
+                const el = this.board.create('circle', parents, attr);
+                op._id = el.id;
+                const pc = el.center || ((_points2 = el.points) === null || _points2 === void 0 ? void 0 : _points2[0]);
+                const pp = el.point2 || ((_points3 = el.points) === null || _points3 === void 0 ? void 0 : _points3[1]);
+                if (this.isJXGPoint(pc) && this.isJXGPoint(pp)) {
+                    op.pointIds = [
+                        pc.id,
+                        pp.id
+                    ];
+                    // Attach tracking to the center and on-point if they don't have it yet
+                    this.attachPointTracking(pc);
+                    this.attachPointTracking(pp);
+                }
+                // Attach shape tracking to the circle element itself
+                this.attachShapeTracking(el);
+                // Force board update to ensure object is created immediately
+                this.board.update();
+            } catch (e) {
+                console.error('Failed to create circle:', e, {
+                    parents
+                });
+            }
+            return;
+        }
+    }
+    rollbackCreate(op) {
+        if (!op._id) return;
+        const obj = this.board.objects[op._id];
+        if (obj) {
+            try {
+                this.board.removeObject(obj);
+            } catch (error) {
+                console.error('Failed to remove object:', error, op._id);
+            }
+        } else {
+            // Try to find and remove by matching definition as fallback
+            this.removeByMatchingDefinition({
+                kind: 'delete',
+                elType: op.elType,
+                payload: op.payload,
+                _id: op._id,
+                pointIds: op.pointIds || []
+            });
+        }
+        // Remove associated points if they're not used elsewhere
+        if (op.pointIds && (op.elType === 'segment' || op.elType === 'line' || op.elType === 'circle')) {
+            op.pointIds.forEach((pointId)=>{
+                const pointObj = this.board.objects[pointId];
+                if (pointObj && !this.isPointUsedElsewhere(pointId, pointObj)) {
+                    try {
+                        this.board.removeObject(pointObj);
+                    } catch (error) {
+                        console.error('Failed to remove point:', error, pointId);
+                    }
+                }
+            });
+        }
+    }
+    performDelete(op) {
+        if (op._id) {
+            const target = this.board.objects[op._id];
+            if (target) {
+                this.board.removeObject(target);
+                // Force board update to ensure object is removed immediately
+                this.board.update();
+            }
+        } else {
+            // If _id is missing, try to find and remove by matching defining points and attributes
+            this.removeByMatchingDefinition(op);
+            // Force board update after removing by matching
+            this.board.update();
+        }
+        // Remove associated points if they're not used elsewhere
+        if (op.pointIds && (op.elType === 'segment' || op.elType === 'line' || op.elType === 'circle')) {
+            op.pointIds.forEach((pointId)=>{
+                const pointObj = this.board.objects[pointId];
+                if (pointObj && !this.isPointUsedElsewhere(pointId, pointObj)) {
+                    this.board.removeObject(pointObj);
+                }
+            });
+            // Force board update after removing points
+            this.board.update();
+        }
+    }
+    removeByMatchingDefinition(op) {
+        const objects = Object.values(this.board.objects);
+        for (const obj of objects){
+            if (obj.elType !== op.elType) continue;
+            let matches = false;
+            if (op.elType === 'point') {
+                const { x, y } = op.payload;
+                matches = Math.abs(obj.X() - x) < this.EPS && Math.abs(obj.Y() - y) < this.EPS;
+            } else if (op.elType === 'segment' || op.elType === 'line') {
+                var _obj_points, _obj_points1;
+                const { p1, p2 } = op.payload;
+                const a = obj.point1 || obj.A || ((_obj_points = obj.points) === null || _obj_points === void 0 ? void 0 : _obj_points[0]);
+                const b = obj.point2 || obj.B || ((_obj_points1 = obj.points) === null || _obj_points1 === void 0 ? void 0 : _obj_points1[1]);
+                if (a && b) {
+                    matches = Math.abs(a.X() - p1.x) < this.EPS && Math.abs(a.Y() - p1.y) < this.EPS && Math.abs(b.X() - p2.x) < this.EPS && Math.abs(b.Y() - p2.y) < this.EPS;
+                }
+            } else if (op.elType === 'circle') {
+                var _obj_points2, _obj_points3;
+                const { center, on } = op.payload;
+                const c = obj.center || obj.midpoint || ((_obj_points2 = obj.points) === null || _obj_points2 === void 0 ? void 0 : _obj_points2[0]);
+                const p = obj.point2 || ((_obj_points3 = obj.points) === null || _obj_points3 === void 0 ? void 0 : _obj_points3[1]);
+                if (c) {
+                    const centerMatches = Math.abs(c.X() - center.x) < this.EPS && Math.abs(c.Y() - center.y) < this.EPS;
+                    if (p) {
+                        matches = centerMatches && Math.abs(p.X() - on.x) < this.EPS && Math.abs(p.Y() - on.y) < this.EPS;
+                    } else {
+                        var _ref;
+                        // For circles defined by center and radius
+                        const R = (_ref = typeof obj.R === 'function' ? obj.R() : obj.radius) !== null && _ref !== void 0 ? _ref : 1;
+                        const expectedRadius = Math.hypot(on.x - center.x, on.y - center.y);
+                        matches = centerMatches && Math.abs(R - expectedRadius) < this.EPS;
+                    }
+                }
+            }
+            if (matches) {
+                this.board.removeObject(obj);
+                break;
+            }
+        }
+    }
+    rollbackDelete(op) {
+        if (op.elType === 'point') {
+            const { x, y, attr } = op.payload;
+            const pt = this.ensurePoint({
+                x,
+                y
+            }, attr);
+            if (!pt) return;
+            op._id = pt.id;
+            // Force board update to ensure point is created immediately
+            this.board.update();
+            return;
+        }
+        if (op.elType === 'segment' || op.elType === 'line') {
+            var _op_pointIds, _op_pointIds1;
+            const { p1, p2, attr } = op.payload;
+            const a = this.getPointByIdOrNear((_op_pointIds = op.pointIds) === null || _op_pointIds === void 0 ? void 0 : _op_pointIds[0], p1) || this.ensurePoint(p1, attr);
+            const b = this.getPointByIdOrNear((_op_pointIds1 = op.pointIds) === null || _op_pointIds1 === void 0 ? void 0 : _op_pointIds1[1], p2) || this.ensurePoint(p2, attr);
+            const useCoords = !(this.isJXGPoint(a) && this.isJXGPoint(b));
+            const parents = useCoords ? [
+                [
+                    p1.x,
+                    p1.y
+                ],
+                [
+                    p2.x,
+                    p2.y
+                ]
+            ] : [
+                a,
+                b
+            ];
+            try {
+                var _points, _points1;
+                const el = this.board.create(op.elType, parents, attr);
+                op._id = el.id;
+                const pA = el.point1 || el.A || ((_points = el.points) === null || _points === void 0 ? void 0 : _points[0]);
+                const pB = el.point2 || el.B || ((_points1 = el.points) === null || _points1 === void 0 ? void 0 : _points1[1]);
+                if (this.isJXGPoint(pA) && this.isJXGPoint(pB)) {
+                    op.pointIds = [
+                        pA.id,
+                        pB.id
+                    ];
+                }
+                // Attach shape tracking to the recreated element
+                this.attachShapeTracking(el);
+                // Force board update to ensure object is created immediately
+                this.board.update();
+            } catch (e) {
+                console.error("Failed to recreate ".concat(op.elType, ":"), e, {
+                    parents
+                });
+            }
+            return;
+        }
+        if (op.elType === 'circle') {
+            var _op_pointIds2, _op_pointIds3;
+            const { center, on, attr } = op.payload;
+            const c = this.getPointByIdOrNear((_op_pointIds2 = op.pointIds) === null || _op_pointIds2 === void 0 ? void 0 : _op_pointIds2[0], center) || this.ensurePoint(center, attr);
+            const p = this.getPointByIdOrNear((_op_pointIds3 = op.pointIds) === null || _op_pointIds3 === void 0 ? void 0 : _op_pointIds3[1], on) || this.ensurePoint(on, attr);
+            const useCoords = !(this.isJXGPoint(c) && this.isJXGPoint(p));
+            const parents = useCoords ? [
+                [
+                    center.x,
+                    center.y
+                ],
+                [
+                    on.x,
+                    on.y
+                ]
+            ] : [
+                c,
+                p
+            ];
+            try {
+                var _points2, _points3;
+                const el = this.board.create('circle', parents, attr);
+                op._id = el.id;
+                const pc = el.center || ((_points2 = el.points) === null || _points2 === void 0 ? void 0 : _points2[0]);
+                const pp = el.point2 || ((_points3 = el.points) === null || _points3 === void 0 ? void 0 : _points3[1]);
+                if (this.isJXGPoint(pc) && this.isJXGPoint(pp)) {
+                    op.pointIds = [
+                        pc.id,
+                        pp.id
+                    ];
+                }
+                // Attach shape tracking to the recreated circle element
+                this.attachShapeTracking(el);
+                // Force board update to ensure object is created immediately
+                this.board.update();
+            } catch (e) {
+                console.error('Failed to recreate circle:', e, {
+                    parents
+                });
+            }
+            return;
+        }
+    }
+    performModify(op) {
+        const pointObj = this.board.objects[op.pointId];
+        if (pointObj) {
+            // Use moveTo instead of setPosition to avoid draggable function issues
+            try {
+                pointObj.moveTo([
+                    op.after.x,
+                    op.after.y
+                ]);
+            } catch (e) {
+                // Fallback to direct coordinate setting
+                pointObj.coords.setCoordinates(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"].COORDS_BY_USER, [
+                    op.after.x,
+                    op.after.y
+                ]);
+                this.board.update();
+            }
+            this.setPointName(pointObj, op.after.name);
+        }
+    }
+    rollbackModify(op) {
+        const pointObj = this.board.objects[op.pointId];
+        if (pointObj) {
+            // Use moveTo instead of setPosition to avoid draggable function issues
+            try {
+                pointObj.moveTo([
+                    op.before.x,
+                    op.before.y
+                ]);
+            } catch (e) {
+                // Fallback to direct coordinate setting
+                pointObj.coords.setCoordinates(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"].COORDS_BY_USER, [
+                    op.before.x,
+                    op.before.y
+                ]);
+                this.board.update();
+            }
+            this.setPointName(pointObj, op.before.name);
+        }
+    }
+    performBundle(op) {
+        // Execute operations in forward order
+        for (const subOp of op.ops){
+            if (subOp) {
+                try {
+                    // Create a fresh copy of the operation to avoid stale IDs
+                    const freshOp = structuredClone(subOp);
+                    // Keep IDs intact - don't delete them
+                    this.performOperation(freshOp);
+                    // Write back the realized IDs to the original operation
+                    if (freshOp.kind === 'create' || freshOp.kind === 'delete') {
+                        const freshOpTyped = freshOp;
+                        const subOpTyped = subOp;
+                        if (freshOpTyped._id !== undefined) {
+                            subOpTyped._id = freshOpTyped._id;
+                        }
+                        if (freshOpTyped.pointIds !== undefined) {
+                            subOpTyped.pointIds = freshOpTyped.pointIds;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error executing bundled operation:', error, subOp);
+                // Continue with other operations even if one fails
+                }
+            }
+        }
+        // Force board update after all bundle operations
+        this.board.update();
+    }
+    rollbackBundle(op) {
+        // Rollback operations in reverse order
+        for(let i = op.ops.length - 1; i >= 0; i--){
+            const subOp = op.ops[i];
+            if (subOp) {
+                try {
+                    // Create a fresh copy of the operation to avoid stale IDs
+                    const freshOp = structuredClone(subOp);
+                    // Keep IDs intact - don't delete them
+                    this.rollbackOperation(freshOp);
+                    // Write back the realized IDs to the original operation
+                    if (freshOp.kind === 'create' || freshOp.kind === 'delete') {
+                        const freshOpTyped = freshOp;
+                        const subOpTyped = subOp;
+                        if (freshOpTyped._id !== undefined) {
+                            subOpTyped._id = freshOpTyped._id;
+                        }
+                        if (freshOpTyped.pointIds !== undefined) {
+                            subOpTyped.pointIds = freshOpTyped.pointIds;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error rolling back bundled operation:', error, subOp);
+                // Continue with other operations even if one fails
+                }
+            }
+        }
+        // Force board update after all bundle rollback operations
+        this.board.update();
+    }
+    setPointName(pointObj, name) {
+        const trimmed = (name || '').trim();
+        const pretty = this.toSubscript(trimmed);
+        pointObj.setAttribute({
+            name: pretty,
+            withLabel: !!trimmed
+        });
+        pointObj._rawName = trimmed;
+    }
+    toSubscript(name) {
+        const map = {
+            '0': '₀',
+            '1': '₁',
+            '2': '₂',
+            '3': '₃',
+            '4': '₄',
+            '5': '₅',
+            '6': '₆',
+            '7': '₇',
+            '8': '₈',
+            '9': '₉'
+        };
+        return name.replace(/_(\d+)/g, (_, d)=>d.split('').map((ch)=>{
+                var _map_ch;
+                return (_map_ch = map[ch]) !== null && _map_ch !== void 0 ? _map_ch : ch;
+            }).join(''));
+    }
+    isPointUsedElsewhere(pointId, pointObj) {
+        return Object.values(this.board.objects).some((otherObj)=>{
+            var _otherObj_point1, _otherObj_point2, _otherObj_center;
+            if (otherObj === pointObj || otherObj.id === pointId) return false;
+            if (((_otherObj_point1 = otherObj.point1) === null || _otherObj_point1 === void 0 ? void 0 : _otherObj_point1.id) === pointId || ((_otherObj_point2 = otherObj.point2) === null || _otherObj_point2 === void 0 ? void 0 : _otherObj_point2.id) === pointId) return true;
+            if (((_otherObj_center = otherObj.center) === null || _otherObj_center === void 0 ? void 0 : _otherObj_center.id) === pointId) return true;
+            if (otherObj.points && Array.isArray(otherObj.points)) {
+                return otherObj.points.some((p)=>(p === null || p === void 0 ? void 0 : p.id) === pointId);
+            }
+            return false;
+        });
+    }
+    // Helper methods for creating operations
+    createPointOperation(x, y) {
+        let attr = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {
+            name: '',
+            size: 2,
+            strokeColor: '#444',
+            fillColor: '#666'
+        };
+        return {
+            kind: 'create',
+            elType: 'point',
+            payload: {
+                x,
+                y,
+                attr
+            }
+        };
+    }
+    createSegmentOperation(p1, p2, attr) {
+        return {
+            kind: 'create',
+            elType: 'segment',
+            payload: {
+                p1,
+                p2,
+                attr
+            }
+        };
+    }
+    createLineOperation(p1, p2, attr) {
+        return {
+            kind: 'create',
+            elType: 'line',
+            payload: {
+                p1,
+                p2,
+                attr
+            }
+        };
+    }
+    createCircleOperation(center, on, attr) {
+        return {
+            kind: 'create',
+            elType: 'circle',
+            payload: {
+                center,
+                on,
+                attr
+            }
+        };
+    }
+    createDeleteOperation(obj) {
+        try {
+            const attr = this.getCommonAttr(obj);
+            if (obj.elType === 'point') {
+                return {
+                    kind: 'delete',
+                    elType: 'point',
+                    payload: {
+                        x: obj.X(),
+                        y: obj.Y(),
+                        attr
+                    },
+                    _id: obj.id
+                };
+            }
+            if (obj.elType === 'segment' || obj.elType === 'line') {
+                var _obj_points, _obj_points1;
+                const a = obj.point1 || obj.A || ((_obj_points = obj.points) === null || _obj_points === void 0 ? void 0 : _obj_points[0]);
+                const b = obj.point2 || obj.B || ((_obj_points1 = obj.points) === null || _obj_points1 === void 0 ? void 0 : _obj_points1[1]);
+                if (!a || !b) return null;
+                return {
+                    kind: 'delete',
+                    elType: obj.elType,
+                    payload: {
+                        p1: {
+                            x: a.X(),
+                            y: a.Y()
+                        },
+                        p2: {
+                            x: b.X(),
+                            y: b.Y()
+                        },
+                        attr
+                    },
+                    _id: obj.id,
+                    pointIds: [
+                        a.id,
+                        b.id
+                    ]
+                };
+            }
+            if (obj.elType === 'circle') {
+                var _obj_points2, _obj_points3, _obj_center_X, _obj_center, _obj_center_Y, _obj_center1;
+                const c = obj.center || obj.midpoint || ((_obj_points2 = obj.points) === null || _obj_points2 === void 0 ? void 0 : _obj_points2[0]);
+                const p = obj.point2 || ((_obj_points3 = obj.points) === null || _obj_points3 === void 0 ? void 0 : _obj_points3[1]);
+                var _obj_center_X1, _obj_center_Y1;
+                const center = c ? {
+                    x: c.X(),
+                    y: c.Y()
+                } : {
+                    x: (_obj_center_X1 = (_obj_center = obj.center) === null || _obj_center === void 0 ? void 0 : (_obj_center_X = _obj_center.X) === null || _obj_center_X === void 0 ? void 0 : _obj_center_X.call(_obj_center)) !== null && _obj_center_X1 !== void 0 ? _obj_center_X1 : 0,
+                    y: (_obj_center_Y1 = (_obj_center1 = obj.center) === null || _obj_center1 === void 0 ? void 0 : (_obj_center_Y = _obj_center1.Y) === null || _obj_center_Y === void 0 ? void 0 : _obj_center_Y.call(_obj_center1)) !== null && _obj_center_Y1 !== void 0 ? _obj_center_Y1 : 0
+                };
+                let on;
+                if (p) {
+                    on = {
+                        x: p.X(),
+                        y: p.Y()
+                    };
+                } else {
+                    var _ref;
+                    const R = (_ref = typeof obj.R === 'function' ? obj.R() : obj.radius) !== null && _ref !== void 0 ? _ref : 1;
+                    on = {
+                        x: center.x + R,
+                        y: center.y
+                    };
+                }
+                return {
+                    kind: 'delete',
+                    elType: 'circle',
+                    payload: {
+                        center,
+                        on,
+                        attr
+                    },
+                    _id: obj.id,
+                    pointIds: c && p ? [
+                        c.id,
+                        p.id
+                    ] : []
+                };
+            }
+        } catch (e) {
+            return null;
+        }
+        return null;
+    }
+    getCommonAttr(o) {
+        var _o_visProp, _o_visProp1, _o_visProp2, _o_visProp3, _o_visProp4, _o_visProp5, _o_visProp6, _o_visProp7, _o_visProp8, _o_visProp9, _o_visProp10;
+        var _o__rawName, _o_visProp_strokecolor, _o_visProp_strokewidth, _o_visProp_fillcolor;
+        return {
+            name: (_o__rawName = o === null || o === void 0 ? void 0 : o._rawName) !== null && _o__rawName !== void 0 ? _o__rawName : '',
+            withLabel: !!((o === null || o === void 0 ? void 0 : (_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.withlabel) || (o === null || o === void 0 ? void 0 : (_o_visProp1 = o.visProp) === null || _o_visProp1 === void 0 ? void 0 : _o_visProp1.withLabel)),
+            fixed: !!(o === null || o === void 0 ? void 0 : (_o_visProp2 = o.visProp) === null || _o_visProp2 === void 0 ? void 0 : _o_visProp2.fixed),
+            size: o === null || o === void 0 ? void 0 : (_o_visProp3 = o.visProp) === null || _o_visProp3 === void 0 ? void 0 : _o_visProp3.size,
+            strokeColor: (_o_visProp_strokecolor = o === null || o === void 0 ? void 0 : (_o_visProp4 = o.visProp) === null || _o_visProp4 === void 0 ? void 0 : _o_visProp4.strokecolor) !== null && _o_visProp_strokecolor !== void 0 ? _o_visProp_strokecolor : o === null || o === void 0 ? void 0 : (_o_visProp5 = o.visProp) === null || _o_visProp5 === void 0 ? void 0 : _o_visProp5.strokeColor,
+            strokeWidth: (_o_visProp_strokewidth = o === null || o === void 0 ? void 0 : (_o_visProp6 = o.visProp) === null || _o_visProp6 === void 0 ? void 0 : _o_visProp6.strokewidth) !== null && _o_visProp_strokewidth !== void 0 ? _o_visProp_strokewidth : o === null || o === void 0 ? void 0 : (_o_visProp7 = o.visProp) === null || _o_visProp7 === void 0 ? void 0 : _o_visProp7.strokeWidth,
+            fillColor: (_o_visProp_fillcolor = o === null || o === void 0 ? void 0 : (_o_visProp8 = o.visProp) === null || _o_visProp8 === void 0 ? void 0 : _o_visProp8.fillcolor) !== null && _o_visProp_fillcolor !== void 0 ? _o_visProp_fillcolor : o === null || o === void 0 ? void 0 : (_o_visProp9 = o.visProp) === null || _o_visProp9 === void 0 ? void 0 : _o_visProp9.fillColor,
+            dash: o === null || o === void 0 ? void 0 : (_o_visProp10 = o.visProp) === null || _o_visProp10 === void 0 ? void 0 : _o_visProp10.dash
+        };
+    }
+    // Helper methods for UI integration
+    fromBoardDeleteUnderMouse(e) {
+        const under = this.board.getAllObjectsUnderMouse(e);
+        const o = under.find((x)=>{
+            var _x_visProp;
+            return !(x === null || x === void 0 ? void 0 : (_x_visProp = x.visProp) === null || _x_visProp === void 0 ? void 0 : _x_visProp.fixed);
+        });
+        return o ? this.createDeleteOperation(o) : null;
+    }
+    createModifyOperation(pointId, before, after) {
+        return {
+            kind: 'modify',
+            pointId,
+            before,
+            after
+        };
+    }
+    constructor(config){
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "board", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "undoStack", []);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "redoStack", []);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "onFeedback", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "EPS", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "txnDepth", 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "pendingOps", []);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "suppressTracking", false);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "moveStarts", new Map());
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "trackingInterval", null);
+        this.board = config.board;
+        this.onFeedback = config.onFeedback;
+        this.EPS = config.EPS || 0.03;
+        this.setupGlobalPointTracking();
+    }
+}
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/Documents/geometry_review/lib/grid-manager.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+// lib/grid-manager.ts
+__turbopack_context__.s([
+    "GridManager",
+    ()=>GridManager
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/@swc/helpers/esm/_define_property.js [app-client] (ecmascript)");
+;
+class GridManager {
+    setMode(mode) {
+        if (this.mode === mode) return;
+        this.mode = mode;
+        this.clearAll();
+        switch(mode){
+            case 'none':
+                this.applyDot(false);
+                break;
+            case 'major':
+                this.createLineGrid(1.0, '#e5e7eb', 1);
+                this.applyDot(false);
+                break;
+            case 'minor':
+                this.createLineGrid(0.2, '#f3f4f6', 0.5);
+                this.applyDot(false);
+                break;
+            case 'major-minor':
+                this.createLineGrid(0.2, '#f3f4f6', 0.5);
+                this.createLineGrid(1.0, '#d1d5db', 1);
+                this.applyDot(false);
+                break;
+            case 'dot':
+                this.applyDot(true);
+                break;
+        }
+        this.board.update();
+    }
+    setDotStep(stepWorldUnits) {
+        this.dotStep = Math.max(0.1, stepWorldUnits);
+        if (this.mode === 'dot') this.applyDot(true);
+    }
+    /** Keep the dot background in sync with pixel scaling */ sync() {
+        if (this.mode !== 'dot') return;
+        this.applyDot(true);
+    }
+    createLineGrid(step, color, strokeWidth) {
+        const bbox = this.board.getBoundingBox();
+        // Create vertical lines
+        for(let x = bbox[0]; x <= bbox[2]; x += step){
+            const line = this.board.create('line', [
+                [
+                    x,
+                    bbox[1]
+                ],
+                [
+                    x,
+                    bbox[3]
+                ]
+            ], {
+                strokeColor: color,
+                strokeWidth: strokeWidth,
+                fixed: true,
+                highlight: false,
+                layer: 0,
+                withLabel: false,
+                showInfobox: false,
+                visible: true,
+                trace: false,
+                track: false,
+                draggable: false
+            });
+            this.gridLines.push(line);
+        }
+        // Create horizontal lines
+        for(let y = bbox[3]; y <= bbox[1]; y += step){
+            const line = this.board.create('line', [
+                [
+                    bbox[0],
+                    y
+                ],
+                [
+                    bbox[2],
+                    y
+                ]
+            ], {
+                strokeColor: color,
+                strokeWidth: strokeWidth,
+                fixed: true,
+                highlight: false,
+                layer: 0,
+                withLabel: false,
+                showInfobox: false,
+                visible: true,
+                trace: false,
+                track: false,
+                draggable: false
+            });
+            this.gridLines.push(line);
+        }
+    }
+    clearAll() {
+        this.gridLines.forEach((line)=>{
+            try {
+                this.board.removeObject(line);
+            } catch (e) {}
+        });
+        this.gridLines = [];
+    }
+    applyDot(enabled) {
+        if (!enabled) {
+            this.container.style.backgroundImage = '';
+            this.container.style.backgroundSize = '';
+            this.container.style.backgroundPosition = '';
+            return;
+        }
+        // Convert world units to pixels using board.unitX/unitY
+        const pxX = this.dotStep * this.board.unitX;
+        const pxY = this.dotStep * this.board.unitY;
+        // Subtle dot (1px) using radial gradient
+        this.container.style.backgroundImage = 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)';
+        this.container.style.backgroundSize = "".concat(pxX, "px ").concat(pxY, "px");
+        // Keep the pattern aligned to the origin
+        // If you allow pan/zoom, you could compute an offset from the bbox.
+        this.container.style.backgroundPosition = "0 0";
+    }
+    constructor(board, container){
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "board", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "gridLines", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "mode", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dotStep", void 0); // world units
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "container", void 0);
+        this.board = board;
+        this.gridLines = [];
+        this.mode = 'none';
+        this.dotStep = 0.5;
+        this.container = container;
+        // ensure background sits below the canvas
+        this.container.style.position = this.container.style.position || 'relative';
+    }
+}
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/Documents/geometry_review/lib/board-manager.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+// lib/board-manager.ts
+__turbopack_context__.s([
+    "BoardManager",
+    ()=>BoardManager
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/@swc/helpers/esm/_define_property.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/jsxgraph/src/index.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$grid$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/grid-manager.ts [app-client] (ecmascript)");
+;
+;
+;
+class BoardManager {
+    init(boardOptions, defaultGridMode) {
+        if (!this.container) {
+            throw new Error('Container element is required');
+        }
+        if (this.board) {
+            throw new Error('Board already initialized');
+        }
+        // Create board
+        this.board = __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"].JSXGraph.initBoard(this.container, {
+            ...this.options,
+            ...boardOptions
+        });
+        // Create grid manager
+        this.gridManager = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$grid$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["GridManager"](this.board, this.container);
+        // Set initial grid mode if provided
+        if (defaultGridMode) {
+            this.gridManager.setMode(defaultGridMode);
+        }
+        // Set up global event wiring for future pan/zoom support
+        // This can be extended later for pan/zoom functionality
+        this.setupGlobalEvents();
+    }
+    /**
+   * Get the board instance (typed getter)
+   */ getBoard() {
+        if (!this.board) {
+            throw new Error('Board not initialized');
+        }
+        return this.board;
+    }
+    /**
+   * Get the grid manager instance
+   */ getGridManager() {
+        if (!this.gridManager) {
+            throw new Error('GridManager not initialized');
+        }
+        return this.gridManager;
+    }
+    /**
+   * Set grid mode via GridManager
+   */ setGridMode(mode) {
+        var _this_gridManager;
+        (_this_gridManager = this.gridManager) === null || _this_gridManager === void 0 ? void 0 : _this_gridManager.setMode(mode);
+    }
+    /**
+   * Setup global event wiring (for later pan/zoom support)
+   */ setupGlobalEvents() {
+        if (!this.board) return;
+    // If you ever enable pan/zoom, keep the dot grid in sync:
+    // this.board.on('boundingbox', () => {
+    //   this.gridManager?.sync()
+    // })
+    // Add other global event handlers here as needed
+    }
+    /**
+   * Update board options (for dynamic changes like pan/zoom)
+   */ updateOptions(options) {
+        if (!this.board) {
+            throw new Error('Board not initialized');
+        }
+        this.options = {
+            ...this.options,
+            ...options
+        };
+    // Apply options to board as needed
+    // Note: Some options may require board recreation
+    }
+    /**
+   * Free the board and clean up resources
+   */ free() {
+        if (this.board) {
+            try {
+                __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"].JSXGraph.freeBoard(this.board);
+            } catch (e) {
+            // Ignore errors during cleanup
+            }
+            this.board = null;
+        }
+        this.gridManager = null;
+        this.container = null;
+    }
+    constructor(options){
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "board", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "gridManager", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "container", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "options", void 0);
+        this.container = options.container;
+        const { container, defaultGridMode, ...boardOptions } = options;
+        this.options = {
+            boundingbox: [
+                -1,
+                8,
+                11,
+                -1
+            ],
+            axis: false,
+            showNavigation: false,
+            showCopyright: false,
+            grid: false,
+            pan: {
+                enabled: false
+            },
+            zoom: false,
+            keepaspectratio: true,
+            ...boardOptions
+        };
+        this.init(boardOptions, defaultGridMode);
+    }
+}
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/Documents/geometry_review/lib/geometry-factory.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+// lib/geometry-factory.ts
+__turbopack_context__.s([
+    "GeometryFactory",
+    ()=>GeometryFactory
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/@swc/helpers/esm/_define_property.js [app-client] (ecmascript)");
+;
+class GeometryFactory {
+    /**
+   * Get snap size based on grid mode
+   */ getSnapSize(gridMode) {
+        if (gridMode === 'none') return 0.25;
+        if (gridMode === 'minor') return 0.1;
+        return 0.25;
+    }
+    /**
+   * Get EPS for finding nearby points based on grid mode
+   */ getNearbyEps(gridMode) {
+        let baseEps = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : 0.05;
+        const snapSize = gridMode === 'none' ? 0.1 : gridMode === 'minor' ? 0.1 : 0.25;
+        return Math.max(baseEps, snapSize * 0.8);
+    }
+    point(x, y) {
+        let snap = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : true, attrs = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : {};
+        const pt = this.board.create('point', [
+            x,
+            y
+        ], {
+            name: '',
+            size: 2,
+            strokeColor: '#444',
+            fillColor: '#666',
+            snapToGrid: snap,
+            snapSizeX: 0.5,
+            snapSizeY: 0.5,
+            ...attrs
+        });
+        pt._rawName = '';
+        return pt;
+    }
+    /**
+   * Create a point with grid-aware snap settings
+   */ pointWithGrid(x, y, gridMode) {
+        let attrs = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : {};
+        const snap = gridMode !== 'none';
+        const snapSize = this.getSnapSize(gridMode);
+        return this.point(x, y, snap, {
+            snapSizeX: snapSize,
+            snapSizeY: snapSize,
+            ...attrs
+        });
+    }
+    segment(a, b) {
+        let attrs = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};
+        return this.board.create('segment', [
+            a,
+            b
+        ], {
+            strokeColor: '#2563eb',
+            strokeWidth: 2,
+            ...attrs
+        });
+    }
+    line(a, b) {
+        let attrs = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};
+        return this.board.create('line', [
+            a,
+            b
+        ], {
+            strokeColor: '#059669',
+            strokeWidth: 1,
+            dash: 1,
+            ...attrs
+        });
+    }
+    circle(center, on) {
+        let attrs = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};
+        return this.board.create('circle', [
+            center,
+            on
+        ], {
+            strokeColor: '#dc2626',
+            strokeWidth: 2,
+            ...attrs
+        });
+    }
+    findNearbyPoint(x, y, eps) {
+        const objs = Object.values(this.board.objects);
+        return objs.find((o)=>{
+            var _o_visProp;
+            return (o === null || o === void 0 ? void 0 : o.elType) === 'point' && !((_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.fixed) && Math.hypot(o.X() - x, o.Y() - y) <= eps;
+        }) || null;
+    }
+    constructor(board){
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "board", void 0);
+        this.board = board;
+    }
+}
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/Documents/geometry_review/lib/selection-manager.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+// lib/selection-manager.ts
+/**
+ * SelectionManager - manages temporary selection state for multi-step tools
+ * 
+ * Responsibility: hold "first click" temporary selection, expose select, clear, getFirst.
+ * Why: simplifies selected state + refs and makes it tool-agnostic.
+ */ __turbopack_context__.s([
+    "SelectionManager",
+    ()=>SelectionManager
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/@swc/helpers/esm/_define_property.js [app-client] (ecmascript)");
+;
+class SelectionManager {
+    /**
+   * Select an item (typically used for first click in multi-step tools)
+   */ select(item) {
+        this.first = item;
+    }
+    /**
+   * Get the first selected item (for two-click tools like segment/line/circle)
+   */ getFirst() {
+        return this.first;
+    }
+    /**
+   * Clear the selection
+   */ clear() {
+        this.first = null;
+    }
+    /**
+   * Check if there is a selection
+   */ hasSelection() {
+        return this.first !== null;
+    }
+    /**
+   * Get all selected items (for potential future multi-selection support)
+   * Currently returns array with first item or empty array
+   */ getAll() {
+        return this.first ? [
+            this.first
+        ] : [];
+    }
+    constructor(){
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "first", null);
+    }
+}
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/Documents/geometry_review/lib/rename-manager.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "RenameManager",
+    ()=>RenameManager
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/@swc/helpers/esm/_define_property.js [app-client] (ecmascript)");
+;
+class RenameManager {
+    /** Attach event listeners */ enable() {
+        if (this.enabled) return;
+        this.enabled = true;
+        this.downHandler = (e)=>{
+            if (!this.opts.eventGuard(e)) return;
+            const pt = this.pointUnder(e);
+            if (!pt) return;
+            // Freeze to prevent accidental drags while we decide if it's a click
+            const wasFixed = !!pt.visProp.fixed;
+            pt.setAttribute({
+                fixed: true
+            });
+            this.armed = {
+                pt,
+                wasFixed
+            };
+            this.downPos = this.getMouseXY(e);
+            // stop normal board interaction for this click
+            stopEvent(e);
+        };
+        this.upHandler = (e)=>{
+            if (!this.armed.pt) return;
+            const up = this.getMouseXY(e);
+            var _this_downPos;
+            const down = (_this_downPos = this.downPos) !== null && _this_downPos !== void 0 ? _this_downPos : up;
+            const moved = Math.hypot(up.x - down.x, up.y - down.y);
+            if (moved <= this.opts.clickEps) {
+                // Treat as click -> prompt & rename
+                this.promptAndRename(this.armed.pt, e);
+            } else {
+                // Treat as drag -> restore and do nothing
+                this.armed.pt.setAttribute({
+                    fixed: this.armed.wasFixed
+                });
+            }
+            // clear arm
+            this.armed = {
+                pt: null,
+                wasFixed: false
+            };
+            this.downPos = null;
+        };
+        this.brd.on('down', this.downHandler);
+        this.brd.on('up', this.upHandler);
+    }
+    /** Detach event listeners */ disable() {
+        if (!this.enabled) return;
+        this.enabled = false;
+        try {
+            if (this.downHandler) this.brd.off('down', this.downHandler);
+            if (this.upHandler) this.brd.off('up', this.upHandler);
+        } catch (e) {}
+        this.downHandler = null;
+        this.upHandler = null;
+        this.armed = {
+            pt: null,
+            wasFixed: false
+        };
+        this.downPos = null;
+    }
+    toggle() {
+        this.enabled ? this.disable() : this.enable();
+    }
+    destroy() {
+        this.disable();
+    }
+    // ---------- helpers ----------
+    getMouseXY(e) {
+        const c = this.brd.getUsrCoordsOfMouse(e);
+        return {
+            x: c[0],
+            y: c[1]
+        };
+    }
+    pointUnder(e) {
+        const under = this.brd.getAllObjectsUnderMouse(e);
+        return under.find((o)=>o.elType === 'point') || null;
+    }
+    isNameTaken(raw, exceptId) {
+        for(const key in this.brd.objects){
+            const o = this.brd.objects[key];
+            if ((o === null || o === void 0 ? void 0 : o.elType) === 'point' && o.id !== exceptId) {
+                var _o__rawName;
+                if (((_o__rawName = o._rawName) !== null && _o__rawName !== void 0 ? _o__rawName : '') === raw) return true;
+            }
+        }
+        return false;
+    }
+    toSubscript(name) {
+        const map = {
+            '0': '₀',
+            '1': '₁',
+            '2': '₂',
+            '3': '₃',
+            '4': '₄',
+            '5': '₅',
+            '6': '₆',
+            '7': '₇',
+            '8': '₈',
+            '9': '₉'
+        };
+        return (name || '').replace(/_(\d+)/g, (_, d)=>d.split('').map((ch)=>{
+                var _map_ch;
+                return (_map_ch = map[ch]) !== null && _map_ch !== void 0 ? _map_ch : ch;
+            }).join(''));
+    }
+    normalizeAndApplyName(pt, raw) {
+        const trimmed = (raw || '').trim();
+        const pretty = this.toSubscript(trimmed);
+        pt.setAttribute({
+            name: pretty,
+            withLabel: !!trimmed
+        });
+        pt._rawName = trimmed;
+    }
+    promptAndRename(pt, e) {
+        const beforeRaw = pt._rawName || '';
+        var _window_prompt;
+        let proposed = ((_window_prompt = window.prompt(this.opts.promptLabel, beforeRaw)) !== null && _window_prompt !== void 0 ? _window_prompt : '').trim();
+        // Deduplicate if necessary
+        if (proposed) {
+            if (this.isNameTaken(proposed, pt.id)) {
+                let i = 2;
+                while(this.isNameTaken("".concat(proposed, "_").concat(i), pt.id))i++;
+                proposed = "".concat(proposed, "_").concat(i);
+            }
+        }
+        this.normalizeAndApplyName(pt, proposed);
+        // Restore mobility
+        pt.setAttribute({
+            fixed: this.armed.wasFixed
+        });
+        // Push the rename event upward for undo/redo
+        this.opts.onRenamed({
+            pointId: pt.id,
+            beforeRaw,
+            afterRaw: proposed || ''
+        });
+        if (this.opts.updateBoard) this.brd.update();
+        // stop this click from leaking into normal handlers
+        stopEvent(e);
+    }
+    constructor(board, options){
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "brd", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "opts", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "enabled", false);
+        // internal state for down/up logic
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "armed", {
+            pt: null,
+            wasFixed: false
+        });
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "downPos", null);
+        // handlers references so we can cleanly detach
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "downHandler", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "upHandler", null);
+        this.brd = board;
+        var _options_clickEps, _options_promptLabel, _options_onRenamed, _options_updateBoard, _options_eventGuard;
+        this.opts = {
+            clickEps: (_options_clickEps = options === null || options === void 0 ? void 0 : options.clickEps) !== null && _options_clickEps !== void 0 ? _options_clickEps : 0.12,
+            promptLabel: (_options_promptLabel = options === null || options === void 0 ? void 0 : options.promptLabel) !== null && _options_promptLabel !== void 0 ? _options_promptLabel : 'Název bodu (např. A, B, C, A_1, A_2):',
+            onRenamed: (_options_onRenamed = options === null || options === void 0 ? void 0 : options.onRenamed) !== null && _options_onRenamed !== void 0 ? _options_onRenamed : ()=>{},
+            updateBoard: (_options_updateBoard = options === null || options === void 0 ? void 0 : options.updateBoard) !== null && _options_updateBoard !== void 0 ? _options_updateBoard : true,
+            eventGuard: (_options_eventGuard = options === null || options === void 0 ? void 0 : options.eventGuard) !== null && _options_eventGuard !== void 0 ? _options_eventGuard : defaultEventGuard
+        };
+    }
+}
+// ---------- small utilities ----------
+function stopEvent(e) {
+    if (e === null || e === void 0 ? void 0 : e.originalEvent) {
+        var _e_originalEvent_stopPropagation, _e_originalEvent, _e_originalEvent_preventDefault, _e_originalEvent1;
+        (_e_originalEvent_stopPropagation = (_e_originalEvent = e.originalEvent).stopPropagation) === null || _e_originalEvent_stopPropagation === void 0 ? void 0 : _e_originalEvent_stopPropagation.call(_e_originalEvent);
+        (_e_originalEvent_preventDefault = (_e_originalEvent1 = e.originalEvent).preventDefault) === null || _e_originalEvent_preventDefault === void 0 ? void 0 : _e_originalEvent_preventDefault.call(_e_originalEvent1);
+    }
+}
+/** Default guard: ignore clicks on anything inside your physical tools (elements with .group) */ function defaultEventGuard(e) {
+    var _e_originalEvent, _t_classList;
+    const t = e === null || e === void 0 ? void 0 : (_e_originalEvent = e.originalEvent) === null || _e_originalEvent === void 0 ? void 0 : _e_originalEvent.target;
+    if (!t) return true;
+    return !(t.closest('.group') || ((_t_classList = t.classList) === null || _t_classList === void 0 ? void 0 : _t_classList.contains('group')));
+}
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
 "[project]/Documents/geometry_review/app/hooks/useBoardScale.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
 
@@ -3045,287 +4607,15 @@ if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelper
     __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
 }
 }),
-"[project]/Documents/geometry_review/lib/supabase-helpers.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
-"use strict";
-
-__turbopack_context__.s([
-    "createAttempt",
-    ()=>createAttempt,
-    "createSession",
-    ()=>createSession,
-    "endSession",
-    ()=>endSession,
-    "ensureAuthenticatedUserExists",
-    ()=>ensureAuthenticatedUserExists,
-    "getAttemptsByQuestion",
-    ()=>getAttemptsByQuestion,
-    "getAttemptsByUser",
-    ()=>getAttemptsByUser,
-    "getOrCreateUser",
-    ()=>getOrCreateUser,
-    "getQuestion",
-    ()=>getQuestion,
-    "getQuestions",
-    ()=>getQuestions,
-    "sampleQuestions",
-    ()=>sampleQuestions,
-    "seedSampleQuestions",
-    ()=>seedSampleQuestions,
-    "updateAttempt",
-    ()=>updateAttempt,
-    "updateSession",
-    ()=>updateSession
-]);
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/supabase.ts [app-client] (ecmascript)");
-;
-async function getQuestions() {
-    const { data, error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_questions').select('*').order('created_at', {
-        ascending: false
-    });
-    if (error) throw error;
-    return data || [];
-}
-async function getQuestion(id) {
-    const { data, error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_questions').select('*').eq('id', id).single();
-    if (error) throw error;
-    return data;
-}
-async function getOrCreateUser(email, name) {
-    // Try to get existing user
-    const { data: existingUser, error: fetchError } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('users').select('*').eq('email', email).single();
-    if (existingUser && !fetchError) {
-        return existingUser;
-    }
-    // Create new user if doesn't exist
-    const { data: newUser, error: createError } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('users').insert({
-        email,
-        name: name || email.split('@')[0],
-        role: 'student'
-    }).select().single();
-    if (createError) throw createError;
-    return newUser;
-}
-async function ensureAuthenticatedUserExists(authUserId, email, name) {
-    // Try to get existing user by ID (should match auth user ID)
-    const { data: existingUser, error: fetchError } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('users').select('*').eq('id', authUserId).single();
-    if (existingUser && !fetchError) {
-        return existingUser;
-    }
-    // Create new user record with the auth user's ID
-    const { data: newUser, error: createError } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('users').insert({
-        id: authUserId,
-        email,
-        name: name || email.split('@')[0],
-        role: 'student'
-    }).select().single();
-    if (createError) {
-        // If error is due to duplicate, try fetching again
-        if (createError.code === '23505') {
-            const { data: user } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('users').select('*').eq('id', authUserId).single();
-            if (user) return user;
-        }
-        throw createError;
-    }
-    return newUser;
-}
-async function createSession(userId, questionId) {
-    const { data, error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('sessions').insert({
-        user_id: userId,
-        question_id: questionId,
-        session_data: {},
-        is_active: true
-    }).select().single();
-    if (error) throw error;
-    return data;
-}
-async function updateSession(sessionId, sessionData) {
-    const { error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('sessions').update({
-        session_data: sessionData
-    }).eq('id', sessionId);
-    if (error) throw error;
-}
-async function endSession(sessionId) {
-    const { error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('sessions').update({
-        is_active: false
-    }).eq('id', sessionId);
-    if (error) throw error;
-}
-async function createAttempt(questionId, sessionId, studentId) {
-    const { data, error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_attempts').insert({
-        question_id: questionId,
-        session_id: sessionId,
-        state: {},
-        student_id: studentId,
-        is_complete: false,
-        time_spent: 0
-    }).select().single();
-    if (error) throw error;
-    return data;
-}
-async function updateAttempt(attemptId, updates) {
-    const { error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_attempts').update(updates).eq('id', attemptId);
-    if (error) throw error;
-}
-async function getAttemptsByUser(userId) {
-    const { data, error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_attempts').select("\n      *,\n      gq_questions (\n        title,\n        code,\n        difficulty\n      )\n    ").eq('student_id', userId).order('created_at', {
-        ascending: false
-    });
-    if (error) throw error;
-    return data || [];
-}
-async function getAttemptsByQuestion(questionId) {
-    const { data, error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_attempts').select("\n      *,\n      sessions (\n        user_id\n      )\n    ").eq('question_id', questionId).order('created_at', {
-        ascending: false
-    });
-    if (error) throw error;
-    return data || [];
-}
-const sampleQuestions = [
-    {
-        code: 'TRIANGLE_001',
-        title: 'Konstrukce rovnoramenného trojúhelníku',
-        prompt_md: "\n# Konstrukce rovnoramenného trojúhelníku\n\nSestrojte rovnoramenný trojúhelník ABC tak, aby:\n- Bod C je vrchol trojúhelníku\n- Bod S je střed ramene\n- Základna AB leží na přímce q\n\n## Postup:\n1. Označte body A a B na přímce q\n2. Sestrojte úsečky AC a BC\n3. Ověřte, že AC = BC\n    ",
-        max_score: 3,
-        givens: {
-            points: {
-                S: {
-                    x: 5,
-                    y: 5
-                },
-                C: {
-                    x: 4.5,
-                    y: 3
-                }
-            },
-            lines: {
-                q: {
-                    p1: {
-                        x: 0,
-                        y: 7
-                    },
-                    p2: {
-                        x: 10,
-                        y: 7
-                    }
-                }
-            }
-        },
-        constraints: {
-            requiredPoints: 2,
-            requiredSegments: 3,
-            minScore: 2
-        },
-        difficulty: 2,
-        tags: [
-            'trojúhelník',
-            'rovnoramenný',
-            'konstrukce'
-        ]
-    },
-    {
-        code: 'CIRCLE_001',
-        title: 'Konstrukce kružnice procházející třemi body',
-        prompt_md: "\n# Konstrukce kružnice procházející třemi body\n\nSestrojte kružnici, která prochází body A, B a C.\n\n## Postup:\n1. Sestrojte osy úseček AB a BC\n2. Najděte průsečík os - střed kružnice\n3. Sestrojte kružnici se středem v průsečíku os\n    ",
-        max_score: 4,
-        givens: {
-            points: {
-                A: {
-                    x: 2,
-                    y: 6
-                },
-                B: {
-                    x: 6,
-                    y: 6
-                },
-                C: {
-                    x: 4,
-                    y: 3
-                }
-            }
-        },
-        constraints: {
-            requiredPoints: 1,
-            requiredLines: 2,
-            requiredCircles: 1,
-            minScore: 3
-        },
-        difficulty: 3,
-        tags: [
-            'kružnice',
-            'tři body',
-            'osy úseček'
-        ]
-    },
-    {
-        code: 'ANGLE_001',
-        title: 'Konstrukce úhlu',
-        prompt_md: "\n# Konstrukce úhlu\n\nSestrojte úhel o velikosti 60° s vrcholem v bodě A a jedním ramenem na přímce p.\n\n## Postup:\n1. Označte bod B na přímce p\n2. Sestrojte kružnici se středem A a poloměrem AB\n3. Sestrojte druhé rameno úhlu\n    ",
-        max_score: 3,
-        givens: {
-            points: {
-                A: {
-                    x: 3,
-                    y: 4
-                }
-            },
-            lines: {
-                p: {
-                    p1: {
-                        x: 0,
-                        y: 4
-                    },
-                    p2: {
-                        x: 8,
-                        y: 4
-                    }
-                }
-            }
-        },
-        constraints: {
-            requiredPoints: 1,
-            requiredLines: 1,
-            requiredCircles: 1,
-            minScore: 2
-        },
-        difficulty: 2,
-        tags: [
-            'úhel',
-            '60°',
-            'konstrukce'
-        ]
-    }
-];
-async function seedSampleQuestions() {
-    try {
-        // Check if questions already exist
-        const existingQuestions = await getQuestions();
-        if (existingQuestions.length > 0) {
-            console.log('Questions already exist, skipping seed');
-            return;
-        }
-        // Insert sample questions
-        const { error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_questions').insert(sampleQuestions);
-        if (error) throw error;
-        console.log('Sample questions seeded successfully');
-    } catch (err) {
-        console.error('Error seeding questions:', err);
-        throw err;
-    }
-}
-if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
-    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
-}
-}),
-"[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
+"[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
 
 __turbopack_context__.s([
     "default",
-    ()=>QuestionBasedTester
+    ()=>GeometryConstructionTester
 ]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/jsxgraph/src/index.js [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$save$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Save$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/save.js [app-client] (ecmascript) <export default as Save>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$trash$2d$2$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Trash2$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/trash-2.js [app-client] (ecmascript) <export default as Trash2>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Circle$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/circle.js [app-client] (ecmascript) <export default as Circle>");
@@ -3335,16 +4625,14 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$ruler$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Ruler$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/ruler.js [app-client] (ecmascript) <export default as Ruler>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$triangle$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Triangle$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/triangle.js [app-client] (ecmascript) <export default as Triangle>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$gauge$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Gauge$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/gauge.js [app-client] (ecmascript) <export default as Gauge>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$arrow$2d$left$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ArrowLeft$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/arrow-left.js [app-client] (ecmascript) <export default as ArrowLeft>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2d$x$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__XCircle$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/circle-x.js [app-client] (ecmascript) <export default as XCircle>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$clock$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Clock$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/lucide-react/dist/esm/icons/clock.js [app-client] (ecmascript) <export default as Clock>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$react$2d$markdown$2f$lib$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__Markdown__as__default$3e$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/react-markdown/lib/index.js [app-client] (ecmascript) <export Markdown as default>");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$remark$2d$gfm$2f$lib$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/remark-gfm/lib/index.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$undo$2d$redo$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/undo-redo.ts [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$board$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/board-manager.ts [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$geometry$2d$factory$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/geometry-factory.ts [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$selection$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/selection-manager.ts [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$rename$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/rename-manager.ts [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableRuler$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/app/components/DraggableRuler.tsx [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableTriangle$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableProtractor$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx [app-client] (ecmascript)");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/supabase.ts [app-client] (ecmascript)");
-var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2d$helpers$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/supabase-helpers.ts [app-client] (ecmascript)");
 ;
 var _s = __turbopack_context__.k.signature();
 'use client';
@@ -3384,9 +4672,7 @@ function hasEndpoints(seg, param) {
     const d = (u, v)=>dist(u, v);
     return d(pts[0], coordsOfPoint(P)) < eps && d(pts[1], coordsOfPoint(Q)) < eps || d(pts[1], coordsOfPoint(P)) < eps && d(pts[0], coordsOfPoint(Q)) < eps;
 }
-function QuestionBasedTester(param) {
-    let { questionId, studentId = 'anonymous', onBack } = param;
-    var _data_validation;
+function GeometryConstructionTester() {
     _s();
     const boardManagerRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
     const containerRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
@@ -3399,14 +4685,6 @@ function QuestionBasedTester(param) {
     const [feedback, setFeedback] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('');
     const [data, setData] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [createdStack, setCreatedStack] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])([]);
-    // Question and session state
-    const [question, setQuestion] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
-    const [session, setSession] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
-    const [attempt, setAttempt] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
-    const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(true);
-    const [error, setError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
-    const [timeSpent, setTimeSpent] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(0);
-    const [startTime, setStartTime] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     // Physical tools state
     const [rulerVisible, setRulerVisible] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     const [triangleVisible, setTriangleVisible] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
@@ -3431,264 +4709,52 @@ function QuestionBasedTester(param) {
     });
     const [activeTool, setActiveTool] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [uiBusy, setUiBusy] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    // Point naming state
+    const [renameMode, setRenameMode] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [selectedPointId, setSelectedPointId] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
     const [gridOption, setGridOption] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])('major');
     const [canUndoState, setCanUndoState] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     const [canRedoState, setCanRedoState] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     const toolRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(tool);
     const selectedRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(selected);
     const uiBusyRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(uiBusy);
+    const renameModeRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(renameMode);
     const handleClickRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
-    const givensRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    // Rename mode refs for down+up approach
+    const renameArmRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])({
+        pt: null,
+        wasFixed: false
+    });
+    const downPosRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "QuestionBasedTester.useEffect": ()=>{
+        "GeometryConstructionTester.useEffect": ()=>{
             toolRef.current = tool;
         }
-    }["QuestionBasedTester.useEffect"], [
+    }["GeometryConstructionTester.useEffect"], [
         tool
     ]);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "QuestionBasedTester.useEffect": ()=>{
+        "GeometryConstructionTester.useEffect": ()=>{
             selectedRef.current = selected;
         }
-    }["QuestionBasedTester.useEffect"], [
+    }["GeometryConstructionTester.useEffect"], [
         selected
     ]);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "QuestionBasedTester.useEffect": ()=>{
+        "GeometryConstructionTester.useEffect": ()=>{
             uiBusyRef.current = uiBusy;
         }
-    }["QuestionBasedTester.useEffect"], [
+    }["GeometryConstructionTester.useEffect"], [
         uiBusy
     ]);
-    // Timer effect
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "QuestionBasedTester.useEffect": ()=>{
-            if (!startTime) return;
-            const interval = setInterval({
-                "QuestionBasedTester.useEffect.interval": ()=>{
-                    setTimeSpent(Math.floor((Date.now() - startTime.getTime()) / 1000));
-                }
-            }["QuestionBasedTester.useEffect.interval"], 1000);
-            return ({
-                "QuestionBasedTester.useEffect": ()=>clearInterval(interval)
-            })["QuestionBasedTester.useEffect"];
+        "GeometryConstructionTester.useEffect": ()=>{
+            renameModeRef.current = renameMode;
         }
-    }["QuestionBasedTester.useEffect"], [
-        startTime
+    }["GeometryConstructionTester.useEffect"], [
+        renameMode
     ]);
-    // Load question and create session
-    (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "QuestionBasedTester.useEffect": ()=>{
-            const loadQuestion = {
-                "QuestionBasedTester.useEffect.loadQuestion": async ()=>{
-                    try {
-                        setLoading(true);
-                        setError(null);
-                        console.debug('loadQuestion id=', questionId, 'studentId=', studentId);
-                        // --- fetch question ---
-                        if (!__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"]) {
-                            // Fallback: create a mock question for testing
-                            const mockQuestion = {
-                                id: questionId || 'mock-question',
-                                code: 'Q9',
-                                title: 'Úloha 9: rovnoramenný ABC (C vrchol, AB na q, S střed ramene)',
-                                prompt_md: 'V rovině leží body **C**, **S** a přímka **q**. Najděte vrcholy **A**, **B** rovnoramenného trojúhelníku **ABC** tak, že **C** je vrchol, **AB** leží na **q** a **S** je střed **jednoho** ramene.',
-                                max_score: 3,
-                                givens: {
-                                    "lines": {
-                                        "q": {
-                                            "p1": {
-                                                "x": 0,
-                                                "y": 7
-                                            },
-                                            "p2": {
-                                                "x": 10,
-                                                "y": 7
-                                            }
-                                        }
-                                    },
-                                    "points": {
-                                        "C": {
-                                            "x": 4.5,
-                                            "y": 3
-                                        },
-                                        "S": {
-                                            "x": 5,
-                                            "y": 5
-                                        }
-                                    },
-                                    "tolerance": 0.06
-                                },
-                                constraints: [
-                                    {
-                                        "id": "A_on_q",
-                                        "line": "q",
-                                        "type": "point_on_line",
-                                        "point": "A"
-                                    },
-                                    {
-                                        "id": "B_on_q",
-                                        "line": "q",
-                                        "type": "point_on_line",
-                                        "point": "B"
-                                    },
-                                    {
-                                        "a": "A",
-                                        "b": "C",
-                                        "c": "B",
-                                        "d": "C",
-                                        "id": "iso",
-                                        "type": "distance_equal"
-                                    },
-                                    {
-                                        "id": "S_mid",
-                                        "type": "any_of",
-                                        "children": [
-                                            {
-                                                "a": "A",
-                                                "b": "C",
-                                                "type": "midpoint_of",
-                                                "midpoint": "S"
-                                            },
-                                            {
-                                                "a": "B",
-                                                "b": "C",
-                                                "type": "midpoint_of",
-                                                "midpoint": "S"
-                                            }
-                                        ]
-                                    }
-                                ],
-                                difficulty: 3,
-                                tags: [
-                                    "triangle",
-                                    "isosceles",
-                                    "construction",
-                                    "geometry"
-                                ]
-                            };
-                            console.debug('Using mock question (Supabase not available):', mockQuestion);
-                            setQuestion(mockQuestion);
-                        } else {
-                            const qResp = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_questions').select('*').eq('id', questionId).single();
-                            console.debug('gq_questions response', qResp);
-                            if (qResp.error) {
-                                console.error('gq_questions error detailed', JSON.stringify(qResp.error, Object.getOwnPropertyNames(qResp.error)));
-                                throw qResp.error;
-                            }
-                            if (!qResp.data) throw new Error('Question not found');
-                            console.debug('Question loaded successfully:', qResp.data);
-                            setQuestion(qResp.data);
-                        }
-                        // --- ensure user ---
-                        let userId = studentId;
-                        // Always check for authenticated user first
-                        const { data: { user: authUser } } = __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"] ? await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].auth.getUser() : {
-                            data: {
-                                user: null
-                            }
-                        };
-                        if (authUser) {
-                            // User is authenticated - ensure they exist in the users table
-                            try {
-                                var _authUser_user_metadata, _authUser_email;
-                                const userRecord = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2d$helpers$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["ensureAuthenticatedUserExists"])(authUser.id, authUser.email || '', ((_authUser_user_metadata = authUser.user_metadata) === null || _authUser_user_metadata === void 0 ? void 0 : _authUser_user_metadata.name) || ((_authUser_email = authUser.email) === null || _authUser_email === void 0 ? void 0 : _authUser_email.split('@')[0]));
-                                userId = userRecord.id;
-                                console.debug('Using authenticated user:', authUser.email, 'ID:', userId);
-                            } catch (err) {
-                                console.error('Error ensuring authenticated user exists:', err);
-                                throw new Error('Failed to create user record for authenticated user');
-                            }
-                        } else if (studentId === 'anonymous') {
-                            // For anonymous users, we need to handle this differently
-                            // Since sessions.user_id requires a foreign key to users, we cannot use a random UUID
-                            // For now, throw an error - anonymous sessions should be handled differently
-                            // or you could create a system/anonymous user in the DB
-                            throw new Error('Anonymous users are not supported. Please log in to continue.');
-                        } else {
-                            // Use the provided studentId as-is (should be a valid UUID that exists in users table)
-                            userId = studentId;
-                            console.debug('Using provided studentId:', userId);
-                        }
-                        // Validate userId looks like a UUID before using it for sessions.user_id
-                        if (!userId || typeof userId === 'string' && !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(userId)) {
-                            console.error('Invalid userId before creating session:', userId);
-                            throw new Error('Invalid userId for session creation');
-                        }
-                        // --- create session ---
-                        if (!__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"]) {
-                            // Mock session and attempt for testing
-                            const mockSession = {
-                                id: 'mock-session-' + Date.now(),
-                                user_id: userId,
-                                question_id: questionId || 'mock-question',
-                                session_data: {},
-                                is_active: true
-                            };
-                            const mockAttempt = {
-                                id: 'mock-attempt-' + Date.now(),
-                                question_id: questionId || 'mock-question',
-                                session_id: mockSession.id,
-                                state: {},
-                                student_id: userId,
-                                is_complete: false,
-                                time_spent: 0
-                            };
-                            console.debug('Using mock session and attempt (Supabase not available)');
-                            setSession(mockSession);
-                            setAttempt(mockAttempt);
-                        } else {
-                            const sResp = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('sessions').insert({
-                                user_id: userId,
-                                question_id: questionId,
-                                session_data: {},
-                                is_active: true
-                            }).select().single();
-                            console.debug('sessions insert response', sResp);
-                            if (sResp.error) {
-                                console.error('sessions insert error', JSON.stringify(sResp.error, Object.getOwnPropertyNames(sResp.error)));
-                                throw sResp.error;
-                            }
-                            setSession(sResp.data);
-                            // --- create attempt ---
-                            const aResp = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_attempts').insert({
-                                question_id: questionId,
-                                session_id: sResp.data.id,
-                                state: {},
-                                student_id: userId,
-                                is_complete: false,
-                                time_spent: 0
-                            }).select().single();
-                            console.debug('gq_attempts insert response', aResp);
-                            if (aResp.error) {
-                                console.error('gq_attempts insert error', JSON.stringify(aResp.error, Object.getOwnPropertyNames(aResp.error)));
-                                throw aResp.error;
-                            }
-                            setAttempt(aResp.data);
-                        }
-                        setStartTime(new Date());
-                    } catch (err) {
-                        // Log more informative detail for non-Error objects
-                        try {
-                            console.error('Error loading question (detailed):', err && typeof err === 'object' ? JSON.stringify(err, Object.getOwnPropertyNames(err)) : err);
-                        } catch (e) {
-                            console.error('Error logging err', e);
-                            console.error('Original err:', err);
-                        }
-                        setError(err instanceof Error ? err.message : 'Failed to load question');
-                    } finally{
-                        setLoading(false);
-                    }
-                }
-            }["QuestionBasedTester.useEffect.loadQuestion"];
-            if (questionId) {
-                loadQuestion();
-            }
-        }
-    }["QuestionBasedTester.useEffect"], [
-        questionId,
-        studentId
-    ]);
+    const givensRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
     function pushCreated(obj) {
         if (obj === null || obj === void 0 ? void 0 : obj.id) setCreatedStack((s)=>[
                 ...s,
@@ -3702,60 +4768,100 @@ function QuestionBasedTester(param) {
             y: coords[1]
         };
     }
+    // "A_12" -> "A₁₂"
+    function toSubscript(name) {
+        const map = {
+            '0': '₀',
+            '1': '₁',
+            '2': '₂',
+            '3': '₃',
+            '4': '₄',
+            '5': '₅',
+            '6': '₆',
+            '7': '₇',
+            '8': '₈',
+            '9': '₉'
+        };
+        return name.replace(/_(\d+)/g, (_, d)=>d.split('').map((ch)=>{
+                var _map_ch;
+                return (_map_ch = map[ch]) !== null && _map_ch !== void 0 ? _map_ch : ch;
+            }).join(''));
+    }
+    // normalize and set the visible + raw name on a JSXGraph point
+    const renamePoint = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
+        "GeometryConstructionTester.useCallback[renamePoint]": (pt, newName)=>{
+            const trimmed = (newName || '').trim();
+            const pretty = toSubscript(trimmed) // converts A_1 -> A₁
+            ;
+            pt.setAttribute({
+                name: pretty,
+                withLabel: !!trimmed
+            });
+            pt._rawName = trimmed; // keep searchable original
+        // Removed pt.board.update() to prevent point attachment issues
+        }
+    }["GeometryConstructionTester.useCallback[renamePoint]"], []);
+    // find a point under event (prefers non-fixed)
+    function pointUnder(brd, e) {
+        const under = brd.getAllObjectsUnderMouse(e);
+        return under.find((o)=>o.elType === 'point') || null;
+    }
+    function isNameTaken(brd, raw, exceptId) {
+        for(const k in brd.objects){
+            const o = brd.objects[k];
+            if (o.elType === 'point' && o.id !== exceptId) {
+                var _o__rawName;
+                if (((_o__rawName = o._rawName) !== null && _o__rawName !== void 0 ? _o__rawName : '') === raw) return true;
+            }
+        }
+        return false;
+    }
     function nearestFreePoint(brd, e) {
         const under = brd.getAllObjectsUnderMouse(e);
         const pt = under.find((o)=>o.elType === 'point' && !o.visProp.fixed);
         return pt || null;
     }
     const createPointSmart = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
-        "QuestionBasedTester.useCallback[createPointSmart]": (brd, xy)=>{
+        "GeometryConstructionTester.useCallback[createPointSmart]": (brd, xy)=>{
             const factory = geometryFactoryRef.current;
             if (!factory) return null;
-            // Check if point should be on any given lines
-            const givens = givensRef.current;
-            if (givens) {
-                for (const [, line] of Object.entries(givens)){
-                    if (line && typeof line === 'object' && 'elType' in line && line.elType === 'line') {
-                        if (pointOnLineXY(xy, line, 0.15)) {
-                            var _undoRedoRef_current;
-                            const op = (_undoRedoRef_current = undoRedoRef.current) === null || _undoRedoRef_current === void 0 ? void 0 : _undoRedoRef_current.createGliderOperation({
-                                x: xy.x,
-                                y: xy.y
-                            }, line, {
-                                name: '',
-                                size: 3,
-                                strokeColor: '#e11d48',
-                                fillColor: '#e11d48',
-                                label: {
-                                    offset: [
-                                        5,
-                                        10
-                                    ]
-                                }
-                            });
-                            if (op) {
-                                var _undoRedoRef_current1, _op_createdIds;
-                                (_undoRedoRef_current1 = undoRedoRef.current) === null || _undoRedoRef_current1 === void 0 ? void 0 : _undoRedoRef_current1.pushOperation(op);
-                                updateUndoRedoState();
-                                const gl = brd.objects[(_op_createdIds = op.createdIds) === null || _op_createdIds === void 0 ? void 0 : _op_createdIds[0]];
-                                return gl !== null && gl !== void 0 ? gl : null;
-                            }
-                        }
+            const { q } = givensRef.current;
+            // If near given line q, create a glider via undo/redo
+            if (pointOnLineXY(xy, q, 0.15)) {
+                const glider = brd.create('glider', [
+                    xy.x,
+                    xy.y,
+                    q
+                ], {
+                    name: '',
+                    size: 3,
+                    strokeColor: '#e11d48',
+                    fillColor: '#e11d48',
+                    label: {
+                        offset: [
+                            5,
+                            10
+                        ]
                     }
-                }
+                });
+                glider._rawName = '';
+                pushCreated(glider);
+                return glider;
             }
+            // Otherwise create normal point (grid-aware)
             const pt = factory.pointWithGrid(xy.x, xy.y, gridOption);
             pushCreated(pt);
             return pt;
         }
-    }["QuestionBasedTester.useCallback[createPointSmart]"], [
-        question,
+    }["GeometryConstructionTester.useCallback[createPointSmart]"], [
         gridOption
     ]);
     const handleClick = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
-        "QuestionBasedTester.useCallback[handleClick]": (brd, e)=>{
+        "GeometryConstructionTester.useCallback[handleClick]": (brd, e)=>{
             var _e_originalEvent;
             if (uiBusyRef.current) return;
+            // Prevent tools from firing while in rename mode
+            if (renameModeRef.current) return;
             // Check if the click is on a physical tool - if so, don't handle it
             const target = (_e_originalEvent = e.originalEvent) === null || _e_originalEvent === void 0 ? void 0 : _e_originalEvent.target;
             if (target && (target.closest('.group') || target.classList.contains('group'))) {
@@ -3766,13 +4872,28 @@ function QuestionBasedTester(param) {
             switch(currentTool){
                 case 'mouse':
                     {
-                        setFeedback('');
+                        // Mouse tool - do nothing, just allow interaction without creating objects
+                        // Check if clicking on a point and prevent default behavior
+                        const under = brd.getAllObjectsUnderMouse(e);
+                        const clickedPoint = under.find({
+                            "GeometryConstructionTester.useCallback[handleClick].clickedPoint": (o)=>o.elType === 'point' && !o.visProp.fixed
+                        }["GeometryConstructionTester.useCallback[handleClick].clickedPoint"]);
+                        if (clickedPoint) {
+                            // Prevent default JSXGraph behavior for points when using mouse tool
+                            if (e.originalEvent) {
+                                e.originalEvent.preventDefault();
+                                e.originalEvent.stopPropagation();
+                            }
+                            setFeedback('Bod vybrán');
+                        } else {
+                            setFeedback('');
+                        }
                         break;
                     }
                 case 'point':
                     {
-                        createPointSmart(brd, xy);
-                        setFeedback('Bod vytvořen');
+                        const p = createPointSmart(brd, xy);
+                        if (p) setFeedback('Bod vytvořen');
                         break;
                     }
                 case 'segment':
@@ -3942,11 +5063,11 @@ function QuestionBasedTester(param) {
                     {
                         const under = brd.getAllObjectsUnderMouse(e);
                         const toRemove = under.find({
-                            "QuestionBasedTester.useCallback[handleClick].toRemove": (o)=>{
+                            "GeometryConstructionTester.useCallback[handleClick].toRemove": (o)=>{
                                 var _o_visProp;
-                                return !((_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.fixed);
+                                return !((_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.fixed) && o.name !== 'S' && o.name !== 'C';
                             }
-                        }["QuestionBasedTester.useCallback[handleClick].toRemove"]);
+                        }["GeometryConstructionTester.useCallback[handleClick].toRemove"]);
                         if (toRemove) {
                             var _undoRedoRef_current18;
                             const delOp = (_undoRedoRef_current18 = undoRedoRef.current) === null || _undoRedoRef_current18 === void 0 ? void 0 : _undoRedoRef_current18.createDeleteOperation(toRemove);
@@ -3964,16 +5085,46 @@ function QuestionBasedTester(param) {
                     }
             }
         }
-    }["QuestionBasedTester.useCallback[handleClick]"], [
+    }["GeometryConstructionTester.useCallback[handleClick]"], [
         createPointSmart
     ]);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "QuestionBasedTester.useEffect": ()=>{
+        "GeometryConstructionTester.useEffect": ()=>{
             handleClickRef.current = handleClick;
         }
-    }["QuestionBasedTester.useEffect"], [
+    }["GeometryConstructionTester.useEffect"], [
         handleClick
     ]);
+    // Keyboard shortcuts
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "GeometryConstructionTester.useEffect": ()=>{
+            const handleKeyPress = {
+                "GeometryConstructionTester.useEffect.handleKeyPress": (e)=>{
+                    if ((e.key === 'n' || e.key === 'N') && !uiBusyRef.current) {
+                        setRenameMode({
+                            "GeometryConstructionTester.useEffect.handleKeyPress": (v)=>!v
+                        }["GeometryConstructionTester.useEffect.handleKeyPress"]);
+                    }
+                    if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                        var _undoRedoRef_current;
+                        e.preventDefault();
+                        (_undoRedoRef_current = undoRedoRef.current) === null || _undoRedoRef_current === void 0 ? void 0 : _undoRedoRef_current.undo();
+                        updateUndoRedoState();
+                    }
+                    if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+                        var _undoRedoRef_current1;
+                        e.preventDefault();
+                        (_undoRedoRef_current1 = undoRedoRef.current) === null || _undoRedoRef_current1 === void 0 ? void 0 : _undoRedoRef_current1.redo();
+                        updateUndoRedoState();
+                    }
+                }
+            }["GeometryConstructionTester.useEffect.handleKeyPress"];
+            window.addEventListener('keydown', handleKeyPress);
+            return ({
+                "GeometryConstructionTester.useEffect": ()=>window.removeEventListener('keydown', handleKeyPress)
+            })["GeometryConstructionTester.useEffect"];
+        }
+    }["GeometryConstructionTester.useEffect"], []);
     // Handle ruler position changes
     const handleRulerPositionChange = (x, y, rotation, length)=>{
         setRulerPosition({
@@ -4005,6 +5156,7 @@ function QuestionBasedTester(param) {
         setRulerVisible(!rulerVisible);
         if (!rulerVisible) {
             setActiveTool('ruler');
+            setTool('mouse'); // Automatically switch to mouse mode when activating ruler
         } else if (activeTool === 'ruler') {
             setActiveTool(null);
         }
@@ -4013,6 +5165,7 @@ function QuestionBasedTester(param) {
         setTriangleVisible(!triangleVisible);
         if (!triangleVisible) {
             setActiveTool('triangle');
+            setTool('mouse'); // Automatically switch to mouse mode when activating triangle
         } else if (activeTool === 'triangle') {
             setActiveTool(null);
         }
@@ -4021,302 +5174,304 @@ function QuestionBasedTester(param) {
         setProtractorVisible(!protractorVisible);
         if (!protractorVisible) {
             setActiveTool('protractor');
+            setTool('mouse'); // Automatically switch to mouse mode when activating protractor
         } else if (activeTool === 'protractor') {
             setActiveTool(null);
         }
     }
-    // Initialize board AFTER the loading phase so the container actually exists
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "QuestionBasedTester.useEffect": ()=>{
-            // wait until question has finished loading AND there's no error
-            if (loading || error) return;
-            // only init once, and only when the container is mounted
-            if (!containerRef.current || boardRef.current) return;
-            console.debug('Initializing board (post-loading), container:', containerRef.current);
-            // Calculate proper bounding box to maintain uniform scaling
-            const containerRect = containerRef.current.getBoundingClientRect();
-            const worldWidth = 12 // 11 - (-1) = 12
-            ;
-            const worldHeight = 9 // 8 - (-1) = 9
-            ;
-            // Calculate uniform scale to maintain aspect ratio
-            const scaleX = containerRect.width / worldWidth;
-            const scaleY = containerRect.height / worldHeight;
-            const uniformScale = Math.min(scaleX, scaleY);
-            // Calculate centered bounding box
-            const scaledWidth = worldWidth * uniformScale;
-            const scaledHeight = worldHeight * uniformScale;
-            const offsetX = (containerRect.width - scaledWidth) / 2;
-            const offsetY = (containerRect.height - scaledHeight) / 2;
-            // Convert back to world coordinates
-            const left = -1 - offsetX / uniformScale;
-            const right = 11 + offsetX / uniformScale;
-            const top = 8 + offsetY / uniformScale;
-            const bottom = -1 - offsetY / uniformScale;
-            const brd = __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"].JSXGraph.initBoard(containerRef.current, {
+        "GeometryConstructionTester.useEffect": ()=>{
+            if (!containerRef.current) return;
+            // Create board manager
+            const boardManager = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$board$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BoardManager"]({
+                container: containerRef.current,
                 boundingbox: [
-                    left,
-                    top,
-                    right,
-                    bottom
+                    -1,
+                    8,
+                    11,
+                    -1
                 ],
                 axis: false,
                 showNavigation: false,
                 showCopyright: false,
-                grid: true,
+                grid: false,
                 pan: {
                     enabled: false
                 },
                 zoom: false,
                 keepaspectratio: true
             });
-            boardRef.current = brd;
-            const downHandler = {
-                "QuestionBasedTester.useEffect.downHandler": (e)=>{
-                    if (handleClickRef.current) handleClickRef.current(brd, e);
-                }
-            }["QuestionBasedTester.useEffect.downHandler"];
-            brd.on('down', downHandler);
-            // Make sure the SVG sizes correctly once visible
-            setTimeout({
-                "QuestionBasedTester.useEffect": ()=>{
-                    try {
-                        var _brd_renderer_resize, _brd_renderer, _brd_fullUpdate;
-                        brd === null || brd === void 0 ? void 0 : (_brd_renderer = brd.renderer) === null || _brd_renderer === void 0 ? void 0 : (_brd_renderer_resize = _brd_renderer.resize) === null || _brd_renderer_resize === void 0 ? void 0 : _brd_renderer_resize.call(_brd_renderer);
-                        brd === null || brd === void 0 ? void 0 : (_brd_fullUpdate = brd.fullUpdate) === null || _brd_fullUpdate === void 0 ? void 0 : _brd_fullUpdate.call(brd);
-                    } catch (e) {}
-                }
-            }["QuestionBasedTester.useEffect"], 0);
-            return ({
-                "QuestionBasedTester.useEffect": ()=>{
-                    try {
-                        __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$jsxgraph$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"].JSXGraph.freeBoard(brd);
-                    } catch (e) {}
-                    boardRef.current = null;
-                    givensRef.current = null;
-                }
-            })["QuestionBasedTester.useEffect"];
-        }
-    }["QuestionBasedTester.useEffect"], [
-        loading,
-        error
-    ]); // 👈 key change
-    // Create givens when question loads AND the board is ready
-    (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "QuestionBasedTester.useEffect": ()=>{
-            if (loading || error) return; // wait until data phase is done
-            if (!boardRef.current || !question) return; // wait until board exists
-            console.debug('Creating givens for question:', question.title, 'givens:', question.givens);
-            // Clear any existing givens first
-            if (givensRef.current) {
-                Object.values(givensRef.current).forEach({
-                    "QuestionBasedTester.useEffect": (obj)=>{
-                        if (obj && typeof obj.removeObject === 'function') {
-                            try {
-                                boardRef.current.removeObject(obj);
-                            } catch (e) {
-                                console.warn('Error removing existing givens:', e);
-                            }
+            boardManagerRef.current = boardManager;
+            const brd = boardManager.getBoard();
+            // Geometry factory, selection, undo/redo
+            geometryFactoryRef.current = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$geometry$2d$factory$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["GeometryFactory"](brd);
+            selectionManagerRef.current = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$selection$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SelectionManager"]();
+            undoRedoRef.current = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$undo$2d$redo$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["UndoRedoManager"]({
+                board: brd,
+                onFeedback: setFeedback,
+                EPS
+            });
+            // Rename manager
+            const renameMgr = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$rename$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["RenameManager"](brd, {
+                clickEps: 0.12,
+                promptLabel: 'Název bodu (např. A, B, C, A_1, A_2):',
+                eventGuard: {
+                    "GeometryConstructionTester.useEffect": (ev)=>{
+                        var _ev_originalEvent, _t_classList;
+                        const t = ev === null || ev === void 0 ? void 0 : (_ev_originalEvent = ev.originalEvent) === null || _ev_originalEvent === void 0 ? void 0 : _ev_originalEvent.target;
+                        if (t && (t.closest('.group') || ((_t_classList = t.classList) === null || _t_classList === void 0 ? void 0 : _t_classList.contains('group')))) return false;
+                        return !uiBusyRef.current;
+                    }
+                }["GeometryConstructionTester.useEffect"],
+                onRenamed: {
+                    "GeometryConstructionTester.useEffect": (param)=>{
+                        let { pointId, beforeRaw, afterRaw } = param;
+                        var _undoRedoRef_current;
+                        if (beforeRaw === afterRaw) return;
+                        const pt = brd.objects[pointId];
+                        if (!pt) return;
+                        const before = {
+                            x: pt.X(),
+                            y: pt.Y(),
+                            name: beforeRaw
+                        };
+                        const after = {
+                            x: pt.X(),
+                            y: pt.Y(),
+                            name: afterRaw
+                        };
+                        const op = (_undoRedoRef_current = undoRedoRef.current) === null || _undoRedoRef_current === void 0 ? void 0 : _undoRedoRef_current.createModifyOperation(pointId, before, after);
+                        if (op) {
+                            undoRedoRef.current.pushOperation(op);
+                            updateUndoRedoState();
                         }
                     }
-                }["QuestionBasedTester.useEffect"]);
-            }
-            const givens = {};
-            if (question.givens) {
-                try {
-                    console.debug('Parsing givens:', question.givens);
-                    const givensData = typeof question.givens === 'string' ? JSON.parse(question.givens) : question.givens;
-                    console.debug('Parsed givens data:', givensData);
-                    // Create points
-                    if (givensData.points) {
-                        console.debug('Creating points:', givensData.points);
-                        Object.entries(givensData.points).forEach({
-                            "QuestionBasedTester.useEffect": (param)=>{
-                                let [name, coords] = param;
-                                const point = boardRef.current.create('point', [
-                                    coords.x,
-                                    coords.y
-                                ], {
-                                    name,
-                                    size: 3,
-                                    strokeColor: '#000',
-                                    fillColor: '#000',
-                                    fixed: true,
-                                    label: {
-                                        offset: [
-                                            5,
-                                            10
-                                        ]
-                                    }
-                                });
-                                givens[name] = point;
-                                console.debug('Created point:', name, coords);
-                            }
-                        }["QuestionBasedTester.useEffect"]);
-                    }
-                    // Create lines
-                    if (givensData.lines) {
-                        console.debug('Creating lines:', givensData.lines);
-                        Object.entries(givensData.lines).forEach({
-                            "QuestionBasedTester.useEffect": (param)=>{
-                                let [name, lineData] = param;
-                                const line = boardRef.current.create('line', [
-                                    [
-                                        lineData.p1.x,
-                                        lineData.p1.y
-                                    ],
-                                    [
-                                        lineData.p2.x,
-                                        lineData.p2.y
-                                    ]
-                                ], {
-                                    strokeColor: '#000',
-                                    strokeWidth: 2,
-                                    name,
-                                    withLabel: true,
-                                    fixed: true,
-                                    label: {
-                                        position: 'rt',
-                                        offset: [
-                                            10,
-                                            0
-                                        ]
-                                    }
-                                });
-                                givens[name] = line;
-                                console.debug('Created line:', name, lineData);
-                            }
-                        }["QuestionBasedTester.useEffect"]);
-                    }
-                    // Create circles
-                    if (givensData.circles) {
-                        console.debug('Creating circles:', givensData.circles);
-                        Object.entries(givensData.circles).forEach({
-                            "QuestionBasedTester.useEffect": (param)=>{
-                                let [name, circleData] = param;
-                                const center = givens[circleData.center] || boardRef.current.create('point', [
-                                    circleData.center.x,
-                                    circleData.center.y
-                                ], {
-                                    name: circleData.center,
-                                    size: 2,
-                                    strokeColor: '#000',
-                                    fillColor: '#000',
-                                    fixed: true
-                                });
-                                const circle = boardRef.current.create('circle', [
-                                    center,
-                                    circleData.radius
-                                ], {
-                                    strokeColor: '#000',
-                                    strokeWidth: 2,
-                                    name,
-                                    withLabel: true,
-                                    fixed: true
-                                });
-                                givens[name] = circle;
-                                console.debug('Created circle:', name, circleData);
-                            }
-                        }["QuestionBasedTester.useEffect"]);
-                    }
-                } catch (err) {
-                    console.error('Error parsing givens:', err);
+                }["GeometryConstructionTester.useEffect"]
+            });
+            renameMgrRef.current = renameMgr;
+            // Down handler always forwards to our click logic
+            const downHandler = {
+                "GeometryConstructionTester.useEffect.downHandler": (e)=>{
+                    var _handleClickRef_current;
+                    (_handleClickRef_current = handleClickRef.current) === null || _handleClickRef_current === void 0 ? void 0 : _handleClickRef_current.call(handleClickRef, brd, e);
                 }
-            } else {
-                // Fallback: create default givens for the isosceles triangle problem
-                console.debug('No givens data found, creating default givens for isosceles triangle problem');
-                const q = boardRef.current.create('line', [
-                    [
-                        0,
-                        7
-                    ],
-                    [
+            }["GeometryConstructionTester.useEffect.downHandler"];
+            brd.on('down', downHandler);
+            // Initialize givens
+            const q = brd.create('line', [
+                [
+                    0,
+                    7
+                ],
+                [
+                    10,
+                    7
+                ]
+            ], {
+                strokeColor: '#000',
+                strokeWidth: 2,
+                name: 'q',
+                withLabel: true,
+                fixed: true,
+                label: {
+                    position: 'rt',
+                    offset: [
                         10,
-                        7
+                        0
                     ]
-                ], {
-                    strokeColor: '#000',
-                    strokeWidth: 2,
-                    name: 'q',
-                    withLabel: true,
-                    fixed: true,
-                    label: {
-                        position: 'rt',
-                        offset: [
-                            10,
-                            0
-                        ]
-                    }
-                });
-                const S = boardRef.current.create('point', [
-                    5,
-                    5
-                ], {
-                    name: 'S',
-                    size: 3,
-                    strokeColor: '#000',
-                    fillColor: '#000',
-                    fixed: true,
-                    label: {
-                        offset: [
-                            5,
-                            10
-                        ]
-                    }
-                });
-                const C = boardRef.current.create('point', [
-                    4.5,
-                    3
-                ], {
-                    name: 'C',
-                    size: 3,
-                    strokeColor: '#000',
-                    fillColor: '#000',
-                    fixed: true,
-                    label: {
-                        offset: [
-                            5,
-                            -15
-                        ]
-                    }
-                });
-                givens.q = q;
-                givens.S = S;
-                givens.C = C;
-            }
-            givensRef.current = givens;
-            console.debug('Givens created:', givens);
-            // Force board update to render the newly created givens
-            if (boardRef.current) {
-                boardRef.current.renderer.resize();
-                boardRef.current.fullUpdate();
-                console.debug('Board updated to display givens');
-            }
-            // Additional debugging
-            console.debug('Board objects after givens creation:', Object.keys(boardRef.current.objects));
+                }
+            });
+            const S = brd.create('point', [
+                5,
+                5
+            ], {
+                name: 'S',
+                size: 3,
+                strokeColor: '#000',
+                fillColor: '#000',
+                fixed: true,
+                label: {
+                    offset: [
+                        5,
+                        10
+                    ]
+                }
+            });
+            const C = brd.create('point', [
+                4.5,
+                3
+            ], {
+                name: 'C',
+                size: 3,
+                strokeColor: '#000',
+                fillColor: '#000',
+                fixed: true,
+                label: {
+                    offset: [
+                        5,
+                        -15
+                    ]
+                }
+            });
+            givensRef.current = {
+                q,
+                S,
+                C
+            };
+            return ({
+                "GeometryConstructionTester.useEffect": ()=>{
+                    try {
+                        brd.off('down', downHandler);
+                    } catch (e) {}
+                    try {
+                        var _renameMgrRef_current;
+                        (_renameMgrRef_current = renameMgrRef.current) === null || _renameMgrRef_current === void 0 ? void 0 : _renameMgrRef_current.destroy();
+                    } catch (e) {}
+                    renameMgrRef.current = null;
+                    undoRedoRef.current = null;
+                    geometryFactoryRef.current = null;
+                    selectionManagerRef.current = null;
+                    boardManager.free();
+                    boardManagerRef.current = null;
+                    givensRef.current = null;
+                }
+            })["GeometryConstructionTester.useEffect"];
         }
-    }["QuestionBasedTester.useEffect"], [
-        question,
-        loading,
-        error
-    ]); // 👈 key change
+    }["GeometryConstructionTester.useEffect"], []);
+    // Apply grid changes
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "GeometryConstructionTester.useEffect": ()=>{
+            var _boardManagerRef_current;
+            (_boardManagerRef_current = boardManagerRef.current) === null || _boardManagerRef_current === void 0 ? void 0 : _boardManagerRef_current.setGridMode(gridOption);
+        }
+    }["GeometryConstructionTester.useEffect"], [
+        gridOption
+    ]);
+    // Update event handlers when rename mode changes
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "GeometryConstructionTester.useEffect": ()=>{
+            var _boardManagerRef_current;
+            const brd = (_boardManagerRef_current = boardManagerRef.current) === null || _boardManagerRef_current === void 0 ? void 0 : _boardManagerRef_current.getBoard();
+            if (!brd) return;
+            // Clean old handlers
+            brd.off('down');
+            brd.off('up');
+            brd.off('dblclick');
+            const CLICK_EPS = 0.12 // world units; tweak if needed
+            ;
+            const openPrompt = {
+                "GeometryConstructionTester.useEffect.openPrompt": (pt, e)=>{
+                    const currentRaw = pt._rawName || '';
+                    var _window_prompt;
+                    let proposed = ((_window_prompt = window.prompt('Název bodu (např. A, B, C, A_1, A_2):', currentRaw)) !== null && _window_prompt !== void 0 ? _window_prompt : '').trim();
+                    if (proposed && isNameTaken(brd, proposed, pt.id)) {
+                        let i = 2;
+                        while(isNameTaken(brd, "".concat(proposed, "_").concat(i), pt.id))i++;
+                        proposed = "".concat(proposed, "_").concat(i);
+                    }
+                    renamePoint(pt, proposed);
+                    // Restore mobility
+                    const arm = renameArmRef.current;
+                    pt.setAttribute({
+                        fixed: arm.wasFixed
+                    });
+                    // Stop further board interaction from this click
+                    if (e === null || e === void 0 ? void 0 : e.originalEvent) {
+                        e.originalEvent.stopPropagation();
+                        e.originalEvent.preventDefault();
+                    }
+                    brd.update();
+                    if (!proposed) setRenameMode(false);
+                    // Clear arm
+                    renameArmRef.current = {
+                        pt: null,
+                        wasFixed: false
+                    };
+                    downPosRef.current = null;
+                }
+            }["GeometryConstructionTester.useEffect.openPrompt"];
+            // 1) DOWN: if in rename mode and on a point, FREEZE it and arm rename
+            const downHandler = {
+                "GeometryConstructionTester.useEffect.downHandler": (e)=>{
+                    if (uiBusyRef.current) return;
+                    // If not in rename mode, pass through to normal drawing handler
+                    if (!renameModeRef.current) {
+                        if (handleClickRef.current) handleClickRef.current(brd, e);
+                        return;
+                    }
+                    const pt = pointUnder(brd, e);
+                    if (!pt) return;
+                    // Freeze now (before any drag begins)
+                    const wasFixed = !!pt.visProp.fixed;
+                    pt.setAttribute({
+                        fixed: true
+                    });
+                    renameArmRef.current = {
+                        pt,
+                        wasFixed
+                    };
+                    downPosRef.current = getMouseCoords(brd, e);
+                    // Kill default drag start
+                    if (e.originalEvent) {
+                        e.originalEvent.stopPropagation();
+                        e.originalEvent.preventDefault();
+                    }
+                }
+            }["GeometryConstructionTester.useEffect.downHandler"];
+            // 2) UP: if we armed a point and movement was small → open prompt
+            const upHandler = {
+                "GeometryConstructionTester.useEffect.upHandler": (e)=>{
+                    const arm = renameArmRef.current;
+                    if (!arm.pt) return;
+                    const up = getMouseCoords(brd, e);
+                    const down = downPosRef.current || up;
+                    const moved = Math.hypot(up.x - down.x, up.y - down.y);
+                    // Only treat as rename if it was a click, not a drag
+                    if (moved <= CLICK_EPS) {
+                        openPrompt(arm.pt, e);
+                        return;
+                    }
+                    // If it was a drag after all, restore the point & abort rename
+                    const { pt } = arm;
+                    pt.setAttribute({
+                        fixed: arm.wasFixed
+                    });
+                    renameArmRef.current = {
+                        pt: null,
+                        wasFixed: false
+                    };
+                    downPosRef.current = null;
+                }
+            }["GeometryConstructionTester.useEffect.upHandler"];
+            brd.on('down', downHandler);
+            brd.on('up', upHandler);
+            return ({
+                "GeometryConstructionTester.useEffect": ()=>{
+                    try {
+                        brd.off('down', downHandler);
+                        brd.off('up', upHandler);
+                    } catch (e) {}
+                }
+            })["GeometryConstructionTester.useEffect"];
+        }
+    }["GeometryConstructionTester.useEffect"], [
+        renameMode,
+        renamePoint
+    ]);
     function undoLast() {
-        const brd = boardRef.current;
-        if (!brd || createdStack.length === 0) return;
-        const lastId = createdStack[createdStack.length - 1];
-        const obj = lastId ? brd.objects[lastId] : undefined;
-        if (obj) brd.removeObject(obj);
-        setCreatedStack((s)=>s.slice(0, -1));
-        setFeedback('');
+        var _undoRedoRef_current;
+        (_undoRedoRef_current = undoRedoRef.current) === null || _undoRedoRef_current === void 0 ? void 0 : _undoRedoRef_current.undo();
+        updateUndoRedoState();
     }
     function clearAll() {
-        const brd = boardRef.current;
+        var _boardManagerRef_current;
+        const brd = (_boardManagerRef_current = boardManagerRef.current) === null || _boardManagerRef_current === void 0 ? void 0 : _boardManagerRef_current.getBoard();
         if (!brd) return;
         const toRemove = [];
         for(const key in brd.objects){
             var _o_visProp;
             const o = brd.objects[key];
-            if (!(o === null || o === void 0 ? void 0 : (_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.fixed)) {
+            if (!(o === null || o === void 0 ? void 0 : (_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.fixed) && o.name !== 'S' && o.name !== 'C' && o.name !== 'q') {
                 toRemove.push(o);
             }
         }
@@ -4326,229 +5481,91 @@ function QuestionBasedTester(param) {
         setData(null);
         setCreatedStack([]);
     }
-    // Generic validation function that works with any question
-    function validateConstruction() {
-        if (!(question === null || question === void 0 ? void 0 : question.constraints)) {
-            return {
-                passed: true,
-                message: 'Konstrukce uložena',
-                score: (question === null || question === void 0 ? void 0 : question.max_score) || 3
-            };
-        }
-        const brd = boardRef.current;
-        const givens = givensRef.current;
-        try {
-            const constraints = typeof question.constraints === 'string' ? JSON.parse(question.constraints) : question.constraints;
-            // This is a simplified validation - in a real implementation, you'd have more sophisticated validation logic
-            // based on the question's constraints structure
-            let score = 0;
-            let passed = false;
-            let message = '';
-            // Basic validation - check if required objects exist
-            const points = Object.values(brd.objects).filter((o)=>{
-                var _o_visProp;
-                return o.elType === 'point' && !((_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.fixed);
-            });
-            const segments = Object.values(brd.objects).filter((o)=>o.elType === 'segment');
-            const lines = Object.values(brd.objects).filter((o)=>{
-                var _o_visProp;
-                return o.elType === 'line' && !((_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.fixed);
-            });
-            const circles = Object.values(brd.objects).filter((o)=>{
-                var _o_visProp;
-                return o.elType === 'circle' && !((_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.fixed);
-            });
-            if (constraints.requiredPoints && points.length >= constraints.requiredPoints) {
-                score += 1;
-            }
-            if (constraints.requiredSegments && segments.length >= constraints.requiredSegments) {
-                score += 1;
-            }
-            if (constraints.requiredLines && lines.length >= constraints.requiredLines) {
-                score += 1;
-            }
-            if (constraints.requiredCircles && circles.length >= constraints.requiredCircles) {
-                score += 1;
-            }
-            if (score >= (constraints.minScore || 2)) {
-                passed = true;
-                message = '✅ Výborně! Konstrukce splňuje požadavky.';
-            } else {
-                message = 'Konstrukce neúplná. Zkuste přidat více objektů.';
-            }
-            return {
-                passed,
-                message,
-                score: Math.min(score, question.max_score)
-            };
-        } catch (err) {
+    function validateNow() {
+        const brd = boardManagerRef.current.getBoard();
+        const { q, S, C } = givensRef.current;
+        const pts = Object.values(brd.objects).filter((o)=>o.elType === 'point');
+        const getRaw = (p)=>{
+            var _p__rawName, _ref;
+            return (_ref = (_p__rawName = p === null || p === void 0 ? void 0 : p._rawName) !== null && _p__rawName !== void 0 ? _p__rawName : p === null || p === void 0 ? void 0 : p.name) !== null && _ref !== void 0 ? _ref : '';
+        };
+        const A = pts.find((p)=>getRaw(p) === 'A');
+        const B = pts.find((p)=>getRaw(p) === 'B');
+        if (!A || !B) {
             return {
                 passed: false,
-                message: 'Chyba při validaci',
+                message: 'Označte vrcholy A a B.',
                 score: 0
             };
         }
-    }
-    async function saveConstruction() {
-        if (!boardRef.current || !attempt) return;
-        const validation = validateConstruction();
-        const currentState = {
-            objects: Object.values(boardRef.current.objects).map((obj)=>({
-                    id: obj.id,
-                    type: obj.elType,
-                    name: obj.name,
-                    properties: obj.visProp
-                })),
-            createdStack,
-            timestamp: new Date().toISOString()
-        };
-        try {
-            if (!__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"]) {
-                // Mock save for testing
-                console.log('Mock save (Supabase not available):', {
-                    validation,
-                    currentState
-                });
-                setData({
-                    validation,
-                    timestamp: new Date().toISOString()
-                });
-                setFeedback(validation.message);
-            } else {
-                const { error } = await __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$supabase$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["supabase"].from('gq_attempts').update({
-                    state: currentState,
-                    score: validation.score,
-                    passed: validation.passed,
-                    feedback: {
-                        message: validation.message,
-                        validation
-                    },
-                    is_complete: true,
-                    time_spent: timeSpent
-                }).eq('id', attempt.id);
-                if (error) throw error;
-                setData({
-                    validation,
-                    timestamp: new Date().toISOString()
-                });
-                setFeedback(validation.message);
-            }
-        } catch (err) {
-            console.error('Error saving attempt:', err);
-            setFeedback('Chyba při ukládání');
+        const AonQ = pointOnLineXY(coordsOfPoint(A), q, EPS);
+        const BonQ = pointOnLineXY(coordsOfPoint(B), q, EPS);
+        if (!(AonQ && BonQ)) {
+            return {
+                passed: false,
+                message: 'A i B musí ležet na přímce q.',
+                score: 1
+            };
         }
+        const AC = dist(coordsOfPoint(A), coordsOfPoint(C));
+        const BC = dist(coordsOfPoint(B), coordsOfPoint(C));
+        const isIso = Math.abs(AC - BC) < EPS;
+        const SA = dist(coordsOfPoint(S), coordsOfPoint(A));
+        const SB = dist(coordsOfPoint(S), coordsOfPoint(B));
+        const SC = dist(coordsOfPoint(S), coordsOfPoint(C));
+        const midOnAC = Math.abs(SA - SC) < EPS;
+        const midOnBC = Math.abs(SB - SC) < EPS;
+        if (!(isIso && (midOnAC || midOnBC))) {
+            return {
+                passed: false,
+                message: 'Zkontrolujte: AC = BC a S je střed ramene.',
+                score: 2
+            };
+        }
+        const segs = Object.values(brd.objects).filter((o)=>o.elType === 'segment');
+        const hasAB = segs.some((s)=>hasEndpoints(s, [
+                A,
+                B
+            ]));
+        const hasAC = segs.some((s)=>hasEndpoints(s, [
+                A,
+                C
+            ]));
+        const hasBC = segs.some((s)=>hasEndpoints(s, [
+                B,
+                C
+            ]));
+        if (!(hasAB && hasAC && hasBC)) {
+            return {
+                passed: true,
+                message: 'Správně, ale chybí narýsované strany.',
+                score: 3
+            };
+        }
+        return {
+            passed: true,
+            message: '✅ Výborně! Podmínky splněny.',
+            score: 3
+        };
     }
-    if (loading) {
-        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-            className: "min-h-screen bg-gray-50 flex items-center justify-center",
-            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                className: "text-center",
-                children: [
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"
-                    }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 822,
-                        columnNumber: 11
-                    }, this),
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                        className: "text-gray-600",
-                        children: "Načítání úlohy..."
-                    }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 823,
-                        columnNumber: 11
-                    }, this)
-                ]
-            }, void 0, true, {
-                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 821,
-                columnNumber: 9
-            }, this)
-        }, void 0, false, {
-            fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 820,
-            columnNumber: 7
-        }, this);
+    function saveConstruction() {
+        var _boardManagerRef_current;
+        const brd = (_boardManagerRef_current = boardManagerRef.current) === null || _boardManagerRef_current === void 0 ? void 0 : _boardManagerRef_current.getBoard();
+        if (!brd) return;
+        const validation = validateNow();
+        setData({
+            validation,
+            timestamp: new Date().toISOString()
+        });
+        setFeedback(validation.message);
     }
-    if (error) {
-        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-            className: "min-h-screen bg-gray-50 flex items-center justify-center",
-            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                className: "text-center",
-                children: [
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2d$x$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__XCircle$3e$__["XCircle"], {
-                        className: "h-12 w-12 text-red-500 mx-auto mb-4"
-                    }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 833,
-                        columnNumber: 11
-                    }, this),
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                        className: "text-red-600 mb-4",
-                        children: error
-                    }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 834,
-                        columnNumber: 11
-                    }, this),
-                    onBack && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                        onClick: onBack,
-                        className: "px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700",
-                        children: "Zpět"
-                    }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 836,
-                        columnNumber: 13
-                    }, this)
-                ]
-            }, void 0, true, {
-                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 832,
-                columnNumber: 9
-            }, this)
-        }, void 0, false, {
-            fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 831,
-            columnNumber: 7
-        }, this);
+    function updateUndoRedoState() {
+        var _undoRedoRef_current, _undoRedoRef_current1;
+        var _undoRedoRef_current_canUndo;
+        setCanUndoState((_undoRedoRef_current_canUndo = (_undoRedoRef_current = undoRedoRef.current) === null || _undoRedoRef_current === void 0 ? void 0 : _undoRedoRef_current.canUndo()) !== null && _undoRedoRef_current_canUndo !== void 0 ? _undoRedoRef_current_canUndo : false);
+        var _undoRedoRef_current_canRedo;
+        setCanRedoState((_undoRedoRef_current_canRedo = (_undoRedoRef_current1 = undoRedoRef.current) === null || _undoRedoRef_current1 === void 0 ? void 0 : _undoRedoRef_current1.canRedo()) !== null && _undoRedoRef_current_canRedo !== void 0 ? _undoRedoRef_current_canRedo : false);
     }
-    if (!question) {
-        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-            className: "min-h-screen bg-gray-50 flex items-center justify-center",
-            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                className: "text-center",
-                children: [
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                        className: "text-gray-600 mb-4",
-                        children: "Úloha nebyla nalezena"
-                    }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 852,
-                        columnNumber: 11
-                    }, this),
-                    onBack && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                        onClick: onBack,
-                        className: "px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700",
-                        children: "Zpět"
-                    }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 854,
-                        columnNumber: 13
-                    }, this)
-                ]
-            }, void 0, true, {
-                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 851,
-                columnNumber: 9
-            }, this)
-        }, void 0, false, {
-            fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 850,
-            columnNumber: 7
-        }, this);
-    }
-    var _question_prompt_md;
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "min-h-screen bg-gray-50 p-6",
         children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4556,161 +5573,27 @@ function QuestionBasedTester(param) {
             children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "bg-white rounded-lg shadow-lg p-6 mb-6",
                 children: [
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "flex items-center justify-between mb-4",
-                        children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                className: "flex items-center gap-4",
-                                children: [
-                                    onBack && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                                        onClick: onBack,
-                                        className: "flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded",
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$arrow$2d$left$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ArrowLeft$3e$__["ArrowLeft"], {
-                                                size: 18
-                                            }, void 0, false, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 878,
-                                                columnNumber: 19
-                                            }, this),
-                                            "Zpět"
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 874,
-                                        columnNumber: 17
-                                    }, this),
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        children: [
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
-                                                className: "text-2xl font-bold text-gray-800",
-                                                children: question.title
-                                            }, void 0, false, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 883,
-                                                columnNumber: 17
-                                            }, this),
-                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                className: "flex items-center gap-4 text-sm text-gray-600",
-                                                children: [
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                        children: [
-                                                            "Kód: ",
-                                                            question.code
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 887,
-                                                        columnNumber: 19
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                        children: [
-                                                            "Obtížnost: ",
-                                                            '★'.repeat(question.difficulty)
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 888,
-                                                        columnNumber: 19
-                                                    }, this),
-                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                        className: "flex items-center gap-1",
-                                                        children: [
-                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$clock$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Clock$3e$__["Clock"], {
-                                                                size: 14
-                                                            }, void 0, false, {
-                                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 890,
-                                                                columnNumber: 21
-                                                            }, this),
-                                                            Math.floor(timeSpent / 60),
-                                                            ":",
-                                                            (timeSpent % 60).toString().padStart(2, '0')
-                                                        ]
-                                                    }, void 0, true, {
-                                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 889,
-                                                        columnNumber: 19
-                                                    }, this)
-                                                ]
-                                            }, void 0, true, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 886,
-                                                columnNumber: 17
-                                            }, this)
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 882,
-                                        columnNumber: 15
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 872,
-                                columnNumber: 13
-                            }, this),
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                className: "text-right",
-                                children: [
-                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        className: "text-sm text-gray-600",
-                                        children: [
-                                            "Maximální skóre: ",
-                                            question.max_score
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 897,
-                                        columnNumber: 15
-                                    }, this),
-                                    attempt && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        className: "text-sm text-gray-600",
-                                        children: [
-                                            "Skóre: ",
-                                            (data === null || data === void 0 ? void 0 : (_data_validation = data.validation) === null || _data_validation === void 0 ? void 0 : _data_validation.score) || 0,
-                                            " / ",
-                                            question.max_score
-                                        ]
-                                    }, void 0, true, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 899,
-                                        columnNumber: 17
-                                    }, this)
-                                ]
-                            }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 896,
-                                columnNumber: 13
-                            }, this)
-                        ]
-                    }, void 0, true, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 871,
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
+                        className: "text-2xl font-bold text-gray-800 mb-4",
+                        children: "Úloha 9: Konstrukce trojúhelníku"
+                    }, void 0, false, {
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 650,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "bg-blue-50 border-l-4 border-blue-500 p-4 mb-4",
-                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                            className: "text-gray-700 text-sm markdown-content",
-                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$react$2d$markdown$2f$lib$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__Markdown__as__default$3e$__["default"], {
-                                remarkPlugins: [
-                                    __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$remark$2d$gfm$2f$lib$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"]
-                                ],
-                                children: (_question_prompt_md = question.prompt_md) !== null && _question_prompt_md !== void 0 ? _question_prompt_md : ''
-                            }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 909,
-                                columnNumber: 15
-                            }, this)
+                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                            className: "text-gray-700",
+                            children: "Sestrojte rovnoramenný trojúhelník ABC. Bod C je vrchol, S je střed ramene, AB leží na přímce q."
                         }, void 0, false, {
-                            fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                            lineNumber: 908,
+                            fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                            lineNumber: 655,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 907,
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 654,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4733,28 +5616,28 @@ function QuestionBasedTester(param) {
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                 d: "M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"
                                             }, void 0, false, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 924,
+                                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                                lineNumber: 669,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                 d: "M13 13l6 6"
                                             }, void 0, false, {
-                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 925,
+                                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                                lineNumber: 670,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 923,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 668,
                                         columnNumber: 15
                                     }, this),
                                     "Myš"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 917,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 662,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4764,15 +5647,15 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Circle$3e$__["Circle"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 935,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 680,
                                         columnNumber: 15
                                     }, this),
                                     " Bod"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 929,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 674,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4782,15 +5665,15 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$pencil$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Pencil$3e$__["Pencil"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 943,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 688,
                                         columnNumber: 15
                                     }, this),
                                     " Úsečka"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 937,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 682,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4800,15 +5683,15 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$pencil$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Pencil$3e$__["Pencil"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 951,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 696,
                                         columnNumber: 15
                                     }, this),
                                     " Přímka"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 945,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 690,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4818,15 +5701,15 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$circle$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Circle$3e$__["Circle"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 959,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 704,
                                         columnNumber: 15
                                     }, this),
                                     " Kružnice"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 953,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 698,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4836,22 +5719,32 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$eraser$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Eraser$3e$__["Eraser"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 967,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 712,
                                         columnNumber: 15
                                     }, this),
                                     " Guma"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 961,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 706,
+                                columnNumber: 13
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                onClick: ()=>setRenameMode((v)=>!v),
+                                className: "px-3 py-2 rounded flex items-center gap-2 ".concat(renameMode ? 'bg-teal-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'),
+                                title: "Přejmenovat bod (klikněte na bod)",
+                                children: "✎ Název bodu"
+                            }, void 0, false, {
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 714,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "border-l-2 border-gray-300 mx-2"
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 970,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 724,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4861,15 +5754,15 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$ruler$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Ruler$3e$__["Ruler"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 978,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 732,
                                         columnNumber: 15
                                     }, this),
                                     " Pravítko"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 972,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 726,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4879,15 +5772,15 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$triangle$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Triangle$3e$__["Triangle"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 986,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 740,
                                         columnNumber: 15
                                     }, this),
                                     " Trojúhelník"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 980,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 734,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4897,40 +5790,41 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$gauge$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Gauge$3e$__["Gauge"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 994,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 748,
                                         columnNumber: 15
                                     }, this),
                                     " Úhloměr"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 988,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 742,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "flex-1"
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 997,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 751,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                                 onClick: undoLast,
-                                className: "px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-2",
+                                disabled: !canUndoState,
+                                className: "px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2",
                                 children: [
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$rotate$2d$ccw$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__RotateCcw$3e$__["RotateCcw"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1000,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 758,
                                         columnNumber: 15
                                     }, this),
                                     " Zpět"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 999,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 753,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4940,15 +5834,15 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$trash$2d$2$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Trash2$3e$__["Trash2"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1003,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 761,
                                         columnNumber: 15
                                     }, this),
                                     " Vymazat"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1002,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 760,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4958,21 +5852,21 @@ function QuestionBasedTester(param) {
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$save$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Save$3e$__["Save"], {
                                         size: 18
                                     }, void 0, false, {
-                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1006,
+                                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                        lineNumber: 764,
                                         columnNumber: 15
                                     }, this),
                                     " Uložit"
                                 ]
                             }, void 0, true, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1005,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 763,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 916,
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 661,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4991,11 +5885,14 @@ function QuestionBasedTester(param) {
                                 length: rulerPosition.length,
                                 onPositionChange: handleRulerPositionChange,
                                 isActive: activeTool === 'ruler',
-                                onActivate: ()=>setActiveTool('ruler'),
+                                onActivate: ()=>{
+                                    setActiveTool('ruler');
+                                    setTool('mouse'); // Automatically switch to mouse mode when clicking ruler
+                                },
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1018,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 776,
                                 columnNumber: 15
                             }, this),
                             triangleVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableTriangle$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -5006,11 +5903,14 @@ function QuestionBasedTester(param) {
                                 type: "45-45-90",
                                 onPositionChange: handleTrianglePositionChange,
                                 isActive: activeTool === 'triangle',
-                                onActivate: ()=>setActiveTool('triangle'),
+                                onActivate: ()=>{
+                                    setActiveTool('triangle');
+                                    setTool('mouse'); // Automatically switch to mouse mode when clicking triangle
+                                },
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1032,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 793,
                                 columnNumber: 15
                             }, this),
                             protractorVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableProtractor$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -5020,17 +5920,20 @@ function QuestionBasedTester(param) {
                                 size: protractorPosition.size,
                                 onPositionChange: handleProtractorPositionChange,
                                 isActive: activeTool === 'protractor',
-                                onActivate: ()=>setActiveTool('protractor'),
+                                onActivate: ()=>{
+                                    setActiveTool('protractor');
+                                    setTool('mouse'); // Automatically switch to mouse mode when clicking protractor
+                                },
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
-                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1047,
+                                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                                lineNumber: 811,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1010,
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 768,
                         columnNumber: 11
                     }, this),
                     feedback && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -5039,44 +5942,44 @@ function QuestionBasedTester(param) {
                             className: "text-gray-800",
                             children: feedback
                         }, void 0, false, {
-                            fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                            lineNumber: 1065,
+                            fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                            lineNumber: 832,
                             columnNumber: 15
                         }, this)
                     }, void 0, false, {
-                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1062,
+                        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                        lineNumber: 829,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
-                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 869,
+                fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+                lineNumber: 649,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
-            fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 868,
+            fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+            lineNumber: 648,
             columnNumber: 7
         }, this)
     }, void 0, false, {
-        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-        lineNumber: 867,
+        fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
+        lineNumber: 647,
         columnNumber: 5
     }, this);
 }
-_s(QuestionBasedTester, "Mcr9hmF2A7Mdk9pwoLKL/wkzeO8=");
-_c = QuestionBasedTester;
+_s(GeometryConstructionTester, "BT+YgzxQlCQRk3yQ7KJxdYyfKNE=");
+_c = GeometryConstructionTester;
 var _c;
-__turbopack_context__.k.register(_c, "QuestionBasedTester");
+__turbopack_context__.k.register(_c, "GeometryConstructionTester");
 if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
     __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
 }
 }),
-"[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx [app-client] (ecmascript, next/dynamic entry)", ((__turbopack_context__) => {
+"[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx [app-client] (ecmascript, next/dynamic entry)", ((__turbopack_context__) => {
 
-__turbopack_context__.n(__turbopack_context__.i("[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx [app-client] (ecmascript)"));
+__turbopack_context__.n(__turbopack_context__.i("[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx [app-client] (ecmascript)"));
 }),
 ]);
 
-//# sourceMappingURL=Documents_geometry_review_7f278924._.js.map
+//# sourceMappingURL=Documents_geometry_review_027aa613._.js.map

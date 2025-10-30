@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import JXG from 'jsxgraph'
-import { Save, Trash2, Circle, Pencil, RotateCcw, Eraser, Ruler, Triangle, Gauge, ArrowLeft, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ArrowLeft, CheckCircle, XCircle, Clock, Settings, ChevronUp } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import DraggableRuler from './DraggableRuler'
@@ -10,8 +10,13 @@ import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
 import { supabase } from '../../lib/supabase'
 import { ensureAuthenticatedUserExists } from '../../lib/supabase-helpers'
+import { UndoRedoManager } from '../../lib/undo-redo'
+import { GridMode } from '../../lib/grid-manager'
+import { BoardManager, JBoard } from '../../lib/board-manager'
+import { GeometryFactory } from '../../lib/geometry-factory'
+import { SelectionManager } from '../../lib/selection-manager'
 
-type JBoard = JXG.Board & { renderer: any }
+// Using JBoard from BoardManager
 
 const EPS = 0.03
 
@@ -75,14 +80,16 @@ interface QuestionBasedTesterProps {
 }
 
 export default function QuestionBasedTester({ questionId, studentId = 'anonymous', onBack }: QuestionBasedTesterProps) {
-  const boardRef = useRef<JBoard | null>(null)
+  const boardManagerRef = useRef<BoardManager | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const undoRedoRef = useRef<UndoRedoManager | null>(null)
+  const geometryFactoryRef = useRef<GeometryFactory | null>(null)
+  const selectionManagerRef = useRef<SelectionManager | null>(null)
 
   const [tool, setTool] = useState<'mouse'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
   const [selected, setSelected] = useState<any[]>([])
   const [feedback, setFeedback] = useState('')
   const [data, setData] = useState<any>(null)
-  const [createdStack, setCreatedStack] = useState<string[]>([])
   
   // Question and session state
   const [question, setQuestion] = useState<Question | null>(null)
@@ -102,6 +109,10 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   const [protractorPosition, setProtractorPosition] = useState({ x: 6, y: 3, rotation: 0, size: 3 })
   const [activeTool, setActiveTool] = useState<'ruler' | 'triangle' | 'protractor' | null>(null)
   const [uiBusy, setUiBusy] = useState(false)
+  const [gridOption, setGridOption] = useState<GridMode>('major')
+  const [canUndoState, setCanUndoState] = useState(false)
+  const [canRedoState, setCanRedoState] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   const toolRef = useRef(tool)
   const selectedRef = useRef(selected)
@@ -290,9 +301,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     }
   }, [questionId, studentId])
 
-  function pushCreated(obj: any) {
-    if (obj?.id) setCreatedStack(s => [...s, obj.id])
-  }
+  // removed createdStack; rely solely on UndoRedoManager
 
   function getMouseCoords(brd: JBoard, e: any): {x: number, y: number} {
     const coords = brd.getUsrCoordsOfMouse(e)
@@ -306,42 +315,18 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   }
 
   const createPointSmart = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
-    if (!question?.givens) {
-      const pt = brd.create('point', [xy.x, xy.y], {
-        name: '', size: 2, strokeColor: '#444', fillColor: '#666'
-      })
-      pushCreated(pt)
-      return pt
-    }
+    const factory = geometryFactoryRef.current
+    if (!factory) return null
 
-    // Check if point should be on any given lines
-    const givens = givensRef.current
-    if (givens) {
-      for (const [key, line] of Object.entries(givens)) {
-        if (line && typeof line === 'object' && 'elType' in line && line.elType === 'line') {
-          if (pointOnLineXY(xy, line, 0.15)) {
-            const existingNames = Object.values(brd.objects)
-              .filter((o:any) => o.elType === 'point')
-              .map((o:any) => o.name)
-            const name = String.fromCharCode(65 + existingNames.length) // A, B, C, etc.
-            
-            const glider = brd.create('glider', [xy.x, xy.y, line], {
-              name, size: 3, strokeColor: '#e11d48', fillColor: '#e11d48',
-              label: { offset: [5, 10] }
-            })
-            pushCreated(glider)
-            return glider
-          }
-        }
-      }
-    }
-    
-    const pt = brd.create('point', [xy.x, xy.y], {
-      name: '', size: 2, strokeColor: '#444', fillColor: '#666'
-    })
-    pushCreated(pt)
+    // Prefer reusing existing point under cursor
+    const under = brd.getAllObjectsUnderMouse({}) as any[]
+    const existing = under?.find((o:any)=> o?.elType==='point' && !o.visProp?.fixed)
+    if (existing) return existing
+
+    // Create free point (grid-aware)
+    const pt = factory.pointWithGrid(xy.x, xy.y, gridOption)
     return pt
-  }, [question])
+  }, [gridOption])
 
   const handleClick = useCallback((brd: JBoard, e: any) => {
     if (uiBusyRef.current) return
@@ -361,76 +346,135 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         break
       }
       case 'point': {
-        createPointSmart(brd, xy)
-        setFeedback('Bod vytvořen')
+        undoRedoRef.current?.begin()
+        // try to reuse an existing point under mouse
+        const under = brd.getAllObjectsUnderMouse(e)
+        const existing = under.find((o:any)=> o.elType==='point' && !o.visProp.fixed)
+        if (existing) {
+          undoRedoRef.current?.commit()
+          setFeedback('Vybrán existující bod')
+          break
+        }
+        const pt:any = createPointSmart(brd, xy)
+        if (pt) {
+          const op = undoRedoRef.current?.createPointOperation(pt.X(), pt.Y(), {
+            name: '', size: 3, strokeColor: '#e11d48', fillColor: '#e11d48', label: { offset: [5, 10] }
+          })
+          if (op) undoRedoRef.current?.pushOperation(op)
+          undoRedoRef.current?.commit()
+          updateUndoRedoState()
+          setFeedback('Bod vytvořen')
+        } else {
+          undoRedoRef.current?.commit()
+        }
         break
       }
       case 'segment': {
-        let p = nearestFreePoint(brd, e)
-        if (!p) p = createPointSmart(brd, xy)
-
-        setSelected(prev => {
-          const arr = [...prev, p]
-          if (arr.length === 1) {
-            setFeedback('Klikněte na druhý bod')
-          } else if (arr.length === 2) {
-            const seg = brd.create('segment', [arr[0], arr[1]], {
-              strokeColor: '#2563eb', strokeWidth: 2
-            })
-            pushCreated(seg)
-            setFeedback('Úsečka vytvořena')
-            return []
-          }
-          return arr
-        })
+        const selectionMgr = selectionManagerRef.current
+        if (!selectionMgr) break
+        const first = selectionMgr.getFirst()
+        if (!first) {
+          undoRedoRef.current?.begin()
+          const under = brd.getAllObjectsUnderMouse(e)
+          const existing = under.find((o:any)=> o.elType==='point' && !o.visProp.fixed)
+          const p = existing || createPointSmart(brd, xy)
+          if (!p) { undoRedoRef.current?.commit(); break }
+          selectionMgr.select(p)
+          setFeedback('Klikněte na druhý bod')
+          break
+        }
+        const a:any = first
+        const b = createPointSmart(brd, xy)
+        if (!b) { undoRedoRef.current?.commit(); selectionMgr.clear(); break }
+        const p1 = { x: a.X(), y: a.Y() }
+        const p2 = { x: (b as any).X(), y: (b as any).Y() }
+        const attr = { strokeColor:'#2563eb', strokeWidth:2 }
+        const op = undoRedoRef.current?.createSegmentOperation(p1, p2, attr)
+        if (op) {
+          op.pointIds = [a.id, (b as any).id]
+          undoRedoRef.current?.pushOperation(op)
+        }
+        undoRedoRef.current?.commit()
+        updateUndoRedoState()
+        selectionMgr.clear()
+        setFeedback('Úsečka vytvořena')
         break
       }
       case 'line': {
-        let p = nearestFreePoint(brd, e)
-        if (!p) p = createPointSmart(brd, xy)
-
-        setSelected(prev => {
-          const arr = [...prev, p]
-          if (arr.length === 1) {
-            setFeedback('Klikněte na druhý bod')
-          } else if (arr.length === 2) {
-            const line = brd.create('line', [arr[0], arr[1]], {
-              strokeColor: '#059669', strokeWidth: 1, dash: 1
-            })
-            pushCreated(line)
-            setFeedback('Přímka vytvořena')
-            return []
-          }
-          return arr
-        })
+        const selectionMgr = selectionManagerRef.current
+        if (!selectionMgr) break
+        const first = selectionMgr.getFirst()
+        if (!first) {
+          undoRedoRef.current?.begin()
+          const under = brd.getAllObjectsUnderMouse(e)
+          const existing = under.find((o:any)=> o.elType==='point' && !o.visProp.fixed)
+          const p = existing || createPointSmart(brd, xy)
+          if (!p) { undoRedoRef.current?.commit(); break }
+          selectionMgr.select(p)
+          setFeedback('Klikněte na druhý bod')
+          break
+        }
+        const a:any = first
+        const b = createPointSmart(brd, xy)
+        if (!b) { undoRedoRef.current?.commit(); selectionMgr.clear(); break }
+        const p1 = { x: a.X(), y: a.Y() }
+        const p2 = { x: (b as any).X(), y: (b as any).Y() }
+        const attr = { strokeColor:'#059669', strokeWidth:1, dash:1 }
+        const op = undoRedoRef.current?.createLineOperation(p1, p2, attr)
+        if (op) {
+          op.pointIds = [a.id, (b as any).id]
+          undoRedoRef.current?.pushOperation(op)
+        }
+        undoRedoRef.current?.commit()
+        updateUndoRedoState()
+        selectionMgr.clear()
+        setFeedback('Přímka vytvořena')
         break
       }
       case 'circle': {
-        let p = nearestFreePoint(brd, e)
-        if (!p) p = createPointSmart(brd, xy)
-
-        setSelected(prev => {
-          const arr = [...prev, p]
-          if (arr.length === 1) {
-            setFeedback('Klikněte na bod na kružnici')
-          } else if (arr.length === 2) {
-            const circ = brd.create('circle', [arr[0], arr[1]], {
-              strokeColor: '#dc2626', strokeWidth: 2
-            })
-            pushCreated(circ)
-            setFeedback('Kružnice vytvořena')
-            return []
-          }
-          return arr
-        })
+        const selectionMgr = selectionManagerRef.current
+        if (!selectionMgr) break
+        const first = selectionMgr.getFirst()
+        if (!first) {
+          undoRedoRef.current?.begin()
+          const under = brd.getAllObjectsUnderMouse(e)
+          const existing = under.find((o:any)=> o.elType==='point' && !o.visProp.fixed)
+          const c = existing || createPointSmart(brd, xy)
+          if (!c) { undoRedoRef.current?.commit(); break }
+          selectionMgr.select(c)
+          setFeedback('Klikněte na bod na kružnici')
+          break
+        }
+        const c:any = first
+        const p = createPointSmart(brd, xy)
+        if (!p) { undoRedoRef.current?.commit(); selectionMgr.clear(); break }
+        const center = { x: c.X(), y: c.Y() }
+        const on = { x: (p as any).X(), y: (p as any).Y() }
+        const attr = { strokeColor:'#dc2626', strokeWidth:2 }
+        const op = undoRedoRef.current?.createCircleOperation(center, on, attr)
+        if (op) {
+          op.pointIds = [c.id, (p as any).id]
+          undoRedoRef.current?.pushOperation(op)
+        }
+        undoRedoRef.current?.commit()
+        updateUndoRedoState()
+        selectionMgr.clear()
+        setFeedback('Kružnice vytvořena')
         break
       }
       case 'rubber': {
         const under = brd.getAllObjectsUnderMouse(e)
         const toRemove = under.find((o:any) => !o.visProp?.fixed)
         if (toRemove) {
-          brd.removeObject(toRemove as JXG.GeometryElement)
-          setFeedback('Objekt smazán')
+          const delOp = undoRedoRef.current?.createDeleteOperation(toRemove)
+          if (delOp) {
+            undoRedoRef.current?.pushOperation(delOp)
+            updateUndoRedoState()
+            setFeedback('Objekt smazán')
+          } else {
+            brd.removeObject(toRemove as JXG.GeometryElement)
+            setFeedback('Objekt smazán (bez historie)')
+          }
         }
         break
       }
@@ -438,6 +482,38 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   }, [createPointSmart])
 
   useEffect(() => { handleClickRef.current = handleClick }, [handleClick])
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault()
+        undoRedoRef.current?.undo()
+        updateUndoRedoState()
+      }
+      if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault()
+        undoRedoRef.current?.redo()
+        updateUndoRedoState()
+      }
+    }
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [])
+
+  // Close settings dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (showSettings && !target.closest('.settings-dropdown')) {
+        setShowSettings(false)
+      }
+    }
+    if (showSettings) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showSettings])
 
   // Handle ruler position changes
   const handleRulerPositionChange = (x: number, y: number, rotation: number, length: number) => {
@@ -487,7 +563,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     if (loading || error) return;
 
     // only init once, and only when the container is mounted
-    if (!containerRef.current || boardRef.current) return;
+    if (!containerRef.current || boardManagerRef.current) return;
 
     console.debug('Initializing board (post-loading), container:', containerRef.current);
 
@@ -513,18 +589,48 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     const top = 8 + (offsetY / uniformScale)
     const bottom = -1 - (offsetY / uniformScale)
 
-    const brd = JXG.JSXGraph.initBoard(containerRef.current, {
+    const boardManager = new BoardManager({
+      container: containerRef.current,
       boundingbox: [left, top, right, bottom],
       axis: false,
       showNavigation: false,
       showCopyright: false,
-      grid: true,
+      grid: false,
       pan: { enabled: false },
       zoom: false,
       keepaspectratio: true
-    }) as JBoard;
+    })
+    boardManagerRef.current = boardManager
+    const brd = boardManager.getBoard() as JBoard
 
-    boardRef.current = brd;
+    geometryFactoryRef.current = new GeometryFactory(brd)
+    selectionManagerRef.current = new SelectionManager()
+    undoRedoRef.current = new UndoRedoManager({ board: brd, onFeedback: setFeedback, EPS })
+
+    // Track point moves as modify operations
+    function attachModifyListeners(el:any) {
+      if (!el || el.elType !== 'point' || el.visProp?.fixed) return
+      let before: null | { x:number; y:number; name:string } = null
+      el.on('down', () => { before = { x: el.X(), y: el.Y(), name: el.name ?? '' } })
+      el.on('up', () => {
+        if (!before) return
+        const after = { x: el.X(), y: el.Y(), name: el.name ?? '' }
+        if (Math.hypot(after.x - before.x, after.y - before.y) > 1e-9) {
+          const op = undoRedoRef.current?.createModifyOperation(el.id, before, after)
+          if (op) {
+            undoRedoRef.current!.pushOperation(op)
+            updateUndoRedoState()
+          }
+        }
+        before = null
+      })
+    }
+
+    Object.values(brd.objects).forEach((o:any) => attachModifyListeners(o))
+    ;(brd as any).on('add', (id: any) => {
+      const o:any = (brd.objects as any)[id]
+      attachModifyListeners(o)
+    })
 
     const downHandler = (e: any) => {
       if (handleClickRef.current) handleClickRef.current(brd, e);
@@ -540,8 +646,12 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     }, 0);
 
     return () => {
-      try { JXG.JSXGraph.freeBoard(brd); } catch {}
-      boardRef.current = null;
+      try { brd.off('down', downHandler) } catch {}
+      undoRedoRef.current = null
+      geometryFactoryRef.current = null
+      selectionManagerRef.current = null
+      boardManager.free()
+      boardManagerRef.current = null
       givensRef.current = null;
     };
   }, [loading, error]); // 👈 key change
@@ -549,7 +659,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   // Create givens when question loads AND the board is ready
   useEffect(() => {
     if (loading || error) return;                 // wait until data phase is done
-    if (!boardRef.current || !question) return;   // wait until board exists
+    if (!boardManagerRef.current || !question) return;   // wait until board exists
 
     console.debug('Creating givens for question:', question.title, 'givens:', question.givens)
 
@@ -558,7 +668,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
       Object.values(givensRef.current).forEach((obj: any) => {
         if (obj && typeof obj.removeObject === 'function') {
           try {
-            boardRef.current!.removeObject(obj)
+            boardManagerRef.current!.getBoard()!.removeObject(obj)
           } catch (e) {
             console.warn('Error removing existing givens:', e)
           }
@@ -577,7 +687,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         if (givensData.points) {
           console.debug('Creating points:', givensData.points)
           Object.entries(givensData.points).forEach(([name, coords]: [string, any]) => {
-            const point = boardRef.current!.create('point', [coords.x, coords.y], {
+            const point = boardManagerRef.current!.getBoard()!.create('point', [coords.x, coords.y], {
               name, size: 3, strokeColor: '#000', fillColor: '#000', fixed: true,
               label: { offset: [5, 10] }
             })
@@ -590,7 +700,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         if (givensData.lines) {
           console.debug('Creating lines:', givensData.lines)
           Object.entries(givensData.lines).forEach(([name, lineData]: [string, any]) => {
-            const line = boardRef.current!.create('line', [[lineData.p1.x, lineData.p1.y], [lineData.p2.x, lineData.p2.y]], {
+            const line = boardManagerRef.current!.getBoard()!.create('line', [[lineData.p1.x, lineData.p1.y], [lineData.p2.x, lineData.p2.y]], {
               strokeColor: '#000', strokeWidth: 2,
               name, withLabel: true, fixed: true,
               label: { position: 'rt', offset: [10, 0] }
@@ -604,10 +714,10 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         if (givensData.circles) {
           console.debug('Creating circles:', givensData.circles)
           Object.entries(givensData.circles).forEach(([name, circleData]: [string, any]) => {
-            const center = givens[circleData.center] || boardRef.current!.create('point', [circleData.center.x, circleData.center.y], {
+            const center = givens[circleData.center] || boardManagerRef.current!.getBoard()!.create('point', [circleData.center.x, circleData.center.y], {
               name: circleData.center, size: 2, strokeColor: '#000', fillColor: '#000', fixed: true
             })
-            const circle = boardRef.current!.create('circle', [center, circleData.radius], {
+            const circle = boardManagerRef.current!.getBoard()!.create('circle', [center, circleData.radius], {
               strokeColor: '#000', strokeWidth: 2,
               name, withLabel: true, fixed: true
             })
@@ -621,16 +731,16 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     } else {
       // Fallback: create default givens for the isosceles triangle problem
       console.debug('No givens data found, creating default givens for isosceles triangle problem')
-      const q = boardRef.current!.create('line', [[0, 7], [10, 7]], {
+      const q = boardManagerRef.current!.getBoard()!.create('line', [[0, 7], [10, 7]], {
         strokeColor: '#000', strokeWidth: 2,
         name: 'q', withLabel: true, fixed: true,
         label: { position: 'rt', offset: [10, 0] }
       })
-      const S = boardRef.current!.create('point', [5, 5], {
+      const S = boardManagerRef.current!.getBoard()!.create('point', [5, 5], {
         name: 'S', size: 3, strokeColor: '#000', fillColor: '#000', fixed: true, 
         label: { offset: [5, 10] }
       })
-      const C = boardRef.current!.create('point', [4.5, 3], {
+      const C = boardManagerRef.current!.getBoard()!.create('point', [4.5, 3], {
         name: 'C', size: 3, strokeColor: '#000', fillColor: '#000', fixed: true, 
         label: { offset: [5, -15] }
       })
@@ -644,28 +754,29 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     console.debug('Givens created:', givens)
     
     // Force board update to render the newly created givens
-    if (boardRef.current) {
-      boardRef.current.renderer.resize();
-      boardRef.current.fullUpdate();
+    if (boardManagerRef.current) {
+      const brd = boardManagerRef.current.getBoard()
+      brd.renderer.resize();
+      brd.fullUpdate();
       console.debug('Board updated to display givens')
     }
     
     // Additional debugging
-    console.debug('Board objects after givens creation:', Object.keys(boardRef.current!.objects))
+    console.debug('Board objects after givens creation:', Object.keys(boardManagerRef.current!.getBoard()!.objects))
   }, [question, loading, error]); // 👈 key change
 
   function undoLast() {
-    const brd = boardRef.current
-    if (!brd || createdStack.length === 0) return
-    const lastId = createdStack[createdStack.length - 1]
-    const obj = lastId ? brd.objects[lastId] : undefined
-    if (obj) brd.removeObject(obj as JXG.GeometryElement)
-    setCreatedStack(s => s.slice(0, -1))
-    setFeedback('')
+    undoRedoRef.current?.undo()
+    updateUndoRedoState()
+  }
+
+  function redoLast() {
+    undoRedoRef.current?.redo()
+    updateUndoRedoState()
   }
 
   function clearAll() {
-    const brd = boardRef.current
+    const brd = boardManagerRef.current?.getBoard()
     if (!brd) return
     const toRemove: any[] = []
     for (const key in brd.objects) {
@@ -678,7 +789,9 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     setSelected([])
     setFeedback('')
     setData(null)
-    setCreatedStack([])
+    // fully reset undo history if supported
+    try { (undoRedoRef.current as any)?.reset?.() } catch {}
+    updateUndoRedoState()
   }
 
   // Generic validation function that works with any question
@@ -687,7 +800,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
       return { passed: true, message: 'Konstrukce uložena', score: question?.max_score || 3 }
     }
 
-    const brd = boardRef.current!
+    const brd = boardManagerRef.current!.getBoard()!
     const givens = givensRef.current
 
     try {
@@ -732,17 +845,16 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   }
 
   async function saveConstruction() {
-    if (!boardRef.current || !attempt) return
+    if (!boardManagerRef.current || !attempt) return
 
     const validation = validateConstruction()
     const currentState = {
-      objects: Object.values(boardRef.current.objects).map((obj: any) => ({
+      objects: Object.values(boardManagerRef.current.getBoard().objects).map((obj: any) => ({
         id: obj.id,
         type: obj.elType,
         name: obj.name,
         properties: obj.visProp
       })),
-      createdStack,
       timestamp: new Date().toISOString()
     }
 
@@ -774,6 +886,11 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
       console.error('Error saving attempt:', err)
       setFeedback('Chyba při ukládání')
     }
+  }
+
+  function updateUndoRedoState() {
+    setCanUndoState(undoRedoRef.current?.canUndo() ?? false)
+    setCanRedoState(undoRedoRef.current?.canRedo() ?? false)
   }
 
   if (loading) {
@@ -957,8 +1074,19 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
 
             <div className="flex-1"></div>
 
-            <button onClick={undoLast} className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 flex items-center gap-2">
+            <button 
+              onClick={undoLast}
+              disabled={!canUndoState}
+              className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+            >
               <RotateCcw size={18}/> Zpět
+            </button>
+            <button 
+              onClick={redoLast}
+              disabled={!canRedoState}
+              className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <RotateCw size={18}/> Znovu
             </button>
             <button onClick={clearAll} className="px-3 py-2 rounded bg-red-500 text-white hover:bg-red-600 flex items-center gap-2">
               <Trash2 size={18}/> Vymazat
@@ -974,6 +1102,81 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
             className="w-full border-2 border-gray-300 rounded-lg bg-white jxgbox relative" 
             style={{ height: 500, touchAction: 'none' }} 
           >
+            {/* Settings Button - positioned outside JSXGraph container */}
+            <div className="absolute top-2 right-2 z-50 settings-dropdown" style={{ zIndex: 9999 }}>
+              <div className="flex items-center gap-2">
+                {/* Grid mode indicator */}
+                <div className="px-2 py-1 bg-white bg-opacity-80 rounded text-xs text-gray-700 border border-gray-300">
+                  {gridOption === 'none' && 'Žádná mřížka'}
+                  {gridOption === 'major' && 'Hlavní'}
+                  {gridOption === 'minor' && 'Vedlejší'}
+                  {gridOption === 'major-minor' && 'Hlavní+Vedlejší'}
+                  {gridOption === 'dot' && 'Bodová'}
+                </div>
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="p-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg shadow-lg transition-colors"
+                  title="Nastavení mřížky"
+                  style={{ zIndex: 10000 }}
+                >
+                  <Settings size={18} />
+                </button>
+              </div>
+              {showSettings && (
+                <div className="absolute top-12 right-0 bg-white border border-gray-300 rounded-lg shadow-lg min-w-48 z-20" style={{ zIndex: 10001 }}>
+                  <div className="p-3 border-b border-gray-200">
+                    <div className="flex items-center gap-2 text-gray-700 font-medium">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 3h18v18H3z"/>
+                        <path d="M9 9h6v6H9z"/>
+                        <path d="M3 9h6"/>
+                        <path d="M15 9h6"/>
+                        <path d="M3 15h6"/>
+                        <path d="M15 15h6"/>
+                        <path d="M9 3v6"/>
+                        <path d="M9 15v6"/>
+                        <path d="M15 3v6"/>
+                        <path d="M15 15v6"/>
+                      </svg>
+                      Zobrazit mřížku
+                      <ChevronUp size={14} />
+                    </div>
+                  </div>
+                  <div className="py-1">
+                    <button
+                      onClick={() => { setGridOption('none'); setShowSettings(false) }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'none' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                    >
+                      Žádná mřížka
+                    </button>
+                    <button
+                      onClick={() => { setGridOption('major'); setShowSettings(false) }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'major' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                    >
+                      Hlavní mřížka
+                    </button>
+                    <button
+                      onClick={() => { setGridOption('minor'); setShowSettings(false) }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'minor' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                    >
+                      Vedlejší mřížka
+                    </button>
+                    <button
+                      onClick={() => { setGridOption('major-minor'); setShowSettings(false) }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'major-minor' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                    >
+                      Hlavní a vedlejší mřížka
+                    </button>
+                    <button
+                      onClick={() => { setGridOption('dot'); setShowSettings(false) }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'dot' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                    >
+                      Bodová mřížka
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             {/* Draggable Ruler */}
             {rulerVisible && (
               <DraggableRuler

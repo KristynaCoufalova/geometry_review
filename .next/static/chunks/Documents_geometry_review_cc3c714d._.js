@@ -4758,10 +4758,12 @@ class SelectObjectsTool {
         this.board.update(); // ensure deselection happens instantly
     }
     applySelectedStyle(obj, on) {
+        // GeoGebra-style selection: blue color with increased stroke width
         const selectedStyle = {
             highlight: true,
-            strokeColor: '#6d28d9',
-            strokeWidth: 3
+            strokeColor: '#1e88e5',
+            strokeWidth: 3,
+            fillOpacity: 0.3
         };
         const saved = this.savedStyle.get(obj);
         if (typeof obj.setProperty === 'function') {
@@ -4782,8 +4784,11 @@ class SelectObjectsTool {
             var _obj_update;
             if (on) {
                 obj.visProp.highlight = true;
-                obj.visProp.strokeColor = '#6d28d9';
+                obj.visProp.strokeColor = '#1e88e5';
                 obj.visProp.strokeWidth = 3;
+                if (obj.elType === 'circle' || obj.elType === 'polygon') {
+                    obj.visProp.fillOpacity = 0.3;
+                }
             } else {
                 var _this4, _this5, _this6, _this7;
                 const vp = obj.visProp;
@@ -4825,34 +4830,67 @@ class SelectObjectsTool {
             y2: start.y
         };
         this._marqueeData = data;
-        // closed path: 5th pt repeats 1st
-        const X = ()=>[
-                data.x1,
-                data.x2,
-                data.x2,
-                data.x1,
-                data.x1
-            ];
-        const Y = ()=>[
-                data.y1,
-                data.y1,
-                data.y2,
-                data.y2,
-                data.y1
-            ];
-        this.marqueeCurve = this.board.create('curve', [
-            X,
-            Y
+        // Create 4 corner points for the rectangle
+        const p1 = this.board.create('point', [
+            ()=>data.x1,
+            ()=>data.y1
         ], {
-            strokeColor: '#d937a3',
-            strokeWidth: 5,
-            dash: 0,
-            fillColor: '#ffaaff',
-            fillOpacity: 0.35,
+            visible: false,
+            fixed: true,
+            withLabel: false
+        });
+        const p2 = this.board.create('point', [
+            ()=>data.x2,
+            ()=>data.y1
+        ], {
+            visible: false,
+            fixed: true,
+            withLabel: false
+        });
+        const p3 = this.board.create('point', [
+            ()=>data.x2,
+            ()=>data.y2
+        ], {
+            visible: false,
+            fixed: true,
+            withLabel: false
+        });
+        const p4 = this.board.create('point', [
+            ()=>data.x1,
+            ()=>data.y2
+        ], {
+            visible: false,
+            fixed: true,
+            withLabel: false
+        });
+        // Create polygon from the 4 points - GeoGebra style (purple/blue with low opacity)
+        this.marqueeCurve = this.board.create('polygon', [
+            p1,
+            p2,
+            p3,
+            p4
+        ], {
+            strokeColor: '#7c3aed',
+            strokeWidth: 2,
+            dash: 1,
+            fillColor: '#c4b5fd',
+            fillOpacity: 0.2,
             highlight: false,
             fixed: true,
-            layer: 100
+            layer: 100,
+            borders: {
+                strokeColor: '#7c3aed',
+                strokeWidth: 2,
+                dash: 1
+            }
         });
+        // Store the corner points for cleanup
+        this.marqueeCurve._marqueePoints = [
+            p1,
+            p2,
+            p3,
+            p4
+        ];
         try {
             var _ref;
             this.marqueeCurve._noHighlight = true;
@@ -4860,18 +4898,7 @@ class SelectObjectsTool {
             const node = this.marqueeCurve.rendNode;
             if (node) {
                 node.style.pointerEvents = 'none';
-                // Force visible style in case attributes are overridden by theme/renderer
-                node.style.stroke = '#d937a3';
-                node.style.strokeWidth = '5px';
-                node.style.fill = '#ffaaff';
-                node.style.fillOpacity = '0.35';
-                node.style.display = 'block';
-                node.style.opacity = '1';
-                node.style.zIndex = '10000';
             }
-        } catch (e) {}
-        try {
-            console.log('Marquee created @', start, 'SVG =', this.marqueeCurve.rendNode);
         } catch (e) {}
         try {
             this.board.containerObj.style.cursor = 'crosshair';
@@ -4885,37 +4912,22 @@ class SelectObjectsTool {
         if (!d) return;
         d.x2 = p.x;
         d.y2 = p.y;
-        try {
-            console.log('Marquee update', {
-                x1: d.x1,
-                y1: d.y1,
-                x2: d.x2,
-                y2: d.y2
-            });
-        } catch (e) {}
-        try {
-            var _updateDataArray, _this;
-            (_updateDataArray = (_this = this.marqueeCurve).updateDataArray) === null || _updateDataArray === void 0 ? void 0 : _updateDataArray.call(_this);
-        } catch (e) {}
-        try {
-            const node = this.marqueeCurve.rendNode;
-            if (node) {
-                node.style.display = 'block';
-                node.style.stroke = '#d937a3';
-                node.style.strokeWidth = '5px';
-                node.style.fill = '#ffaaff';
-                node.style.fillOpacity = '0.35';
-                node.style.opacity = '1';
-                node.style.zIndex = '10000';
-            }
-        } catch (e) {}
         this.board.update();
     }
     destroyMarquee() {
         if (this.marqueeCurve) {
             try {
-                var _remove, _this;
-                (_remove = (_this = this.marqueeCurve).remove) === null || _remove === void 0 ? void 0 : _remove.call(_this);
+                // Remove the corner points first
+                const points = this.marqueeCurve._marqueePoints;
+                if (points && Array.isArray(points)) {
+                    points.forEach((pt)=>{
+                        try {
+                            this.board.removeObject(pt);
+                        } catch (e) {}
+                    });
+                }
+                // Then remove the polygon
+                this.board.removeObject(this.marqueeCurve);
             } catch (e) {}
             this.marqueeCurve = null;
         }
@@ -5238,10 +5250,11 @@ class SelectObjectsTool {
             }
             if (!this.dragging) {
                 var _e_ev, _e_ev1, _e_ev2;
+                // If we released without dragging and didn't cycle-select anything, clear selection
                 if (!this.lastClickWasCycle && !((e === null || e === void 0 ? void 0 : (_e_ev = e.ev) === null || _e_ev === void 0 ? void 0 : _e_ev.shiftKey) || (e === null || e === void 0 ? void 0 : (_e_ev1 = e.ev) === null || _e_ev1 === void 0 ? void 0 : _e_ev1.metaKey) || (e === null || e === void 0 ? void 0 : (_e_ev2 = e.ev) === null || _e_ev2 === void 0 ? void 0 : _e_ev2.ctrlKey))) {
-                    var _this_onFeedback, _this;
-                    this.clearSelection();
-                    (_this_onFeedback = (_this = this).onFeedback) === null || _this_onFeedback === void 0 ? void 0 : _this_onFeedback.call(_this, 'Žádný objekt nevybrán');
+                    var // Selection was already cleared in handleDown for empty space
+                    _this_onFeedback, _this;
+                    (_this_onFeedback = (_this = this).onFeedback) === null || _this_onFeedback === void 0 ? void 0 : _this_onFeedback.call(_this, '');
                 }
                 return;
             }
@@ -5254,6 +5267,11 @@ class SelectObjectsTool {
                 if (!additive) this.clearSelection();
                 chosen.forEach((o)=>this.addToSelection(o));
                 (_this_onFeedback1 = (_this1 = this).onFeedback) === null || _this_onFeedback1 === void 0 ? void 0 : _this_onFeedback1.call(_this1, "".concat(this.selected.size, " objekt(y) vybrány"));
+            } else {
+                var _this_onFeedback2, _this2;
+                // No objects in marquee - clear selection
+                this.clearSelection();
+                (_this_onFeedback2 = (_this2 = this).onFeedback) === null || _this_onFeedback2 === void 0 ? void 0 : _this_onFeedback2.call(_this2, '');
             }
             this.board.update();
         });

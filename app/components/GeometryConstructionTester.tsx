@@ -149,11 +149,11 @@ export default function GeometryConstructionTester() {
       return glider
     }
 
-    // Otherwise create normal point (grid-aware)
-    const pt = factory.pointWithGrid(xy.x, xy.y, gridOption)
+    // Otherwise create normal point (always without snap)
+    const pt = factory.pointWithGrid(xy.x, xy.y, 'none')
     pushCreated(pt)
     return pt
-  }, [gridOption])
+  }, [])
 
   const handleClick = useCallback((brd: JBoard, e: any) => {
     if (uiBusyRef.current) return

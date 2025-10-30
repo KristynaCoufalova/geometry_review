@@ -242,19 +242,19 @@ export default function GeneralGeometryTester() {
         break
       }
       case 'point': {
-        // Use soft snapping for smoother placement
-        const snapped = snapToGrid(xy.x, xy.y, gridOptionRef.current, true)
-        
-        // Check for existing point at snapped location
+        // Place point exactly where clicked, no snapping
+        const raw = xy // use the original mouse coordinates
+        // Check for existing point at this location (with very small epsilon)
         const factory = geometryFactoryRef.current
         if (!factory) break
-        
-        const checkEPS = factory.getNearbyEps(gridOptionRef.current, EPS)
-        const existing = factory.findNearbyPoint(snapped.x, snapped.y, checkEPS)
-        
+
+        // Use a tiny EPS for exact match only
+        const checkEPS = 1e-8
+        const existing = factory.findNearbyPoint(raw.x, raw.y, checkEPS)
+
         if (!existing) {
           const attr = { name:'', size:2, strokeColor:'#444', fillColor:'#666' }
-          const op = undoRedoRef.current?.createPointOperation(snapped.x, snapped.y, attr)
+          const op = undoRedoRef.current?.createPointOperation(raw.x, raw.y, attr)
           if (op) undoRedoRef.current?.pushOperation(op)
           updateUndoRedoState()
           setFeedback('Bod vytvořen')

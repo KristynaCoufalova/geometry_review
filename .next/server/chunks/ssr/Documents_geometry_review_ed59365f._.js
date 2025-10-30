@@ -4145,7 +4145,7 @@ class GeometryFactory {
         const snapSize = this.getSnapSize(gridMode);
         return Math.max(baseEps, snapSize * 0.8);
     }
-    point(x, y, snap = true, attrs = {}) {
+    point(x, y, snap = false, attrs = {}) {
         const pt = this.board.create('point', [
             x,
             y
@@ -4154,9 +4154,7 @@ class GeometryFactory {
             size: 2,
             strokeColor: '#444',
             fillColor: '#666',
-            snapToGrid: snap,
-            snapSizeX: __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["WORLD_PER_MM"],
-            snapSizeY: __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["WORLD_PER_MM"],
+            snapToGrid: false,
             ...attrs
         });
         pt._rawName = '';
@@ -4165,13 +4163,8 @@ class GeometryFactory {
     /**
    * Create a point with grid-aware snap settings
    */ pointWithGrid(x, y, gridMode, attrs = {}) {
-        const snap = gridMode !== 'none';
-        const snapSize = this.getSnapSize(gridMode);
-        return this.point(x, y, snap, {
-            snapSizeX: snapSize,
-            snapSizeY: snapSize,
-            ...attrs
-        });
+        // Always disable snapping for user-created points
+        return this.point(x, y, false, attrs);
     }
     segment(a, b, attrs = {}) {
         return this.board.create('segment', [
@@ -4737,13 +4730,15 @@ function GeneralGeometryTester() {
                 }
             case 'point':
                 {
-                    // Use soft snapping for smoother placement
-                    const snapped = snapToGrid(xy.x, xy.y, gridOptionRef.current, true);
-                    // Check for existing point at snapped location
+                    // Place point exactly where clicked, no snapping
+                    const raw = xy // use the original mouse coordinates
+                    ;
+                    // Check for existing point at this location (with very small epsilon)
                     const factory = geometryFactoryRef.current;
                     if (!factory) break;
-                    const checkEPS = factory.getNearbyEps(gridOptionRef.current, EPS);
-                    const existing = factory.findNearbyPoint(snapped.x, snapped.y, checkEPS);
+                    // Use a tiny EPS for exact match only
+                    const checkEPS = 1e-8;
+                    const existing = factory.findNearbyPoint(raw.x, raw.y, checkEPS);
                     if (!existing) {
                         const attr = {
                             name: '',
@@ -4751,7 +4746,7 @@ function GeneralGeometryTester() {
                             strokeColor: '#444',
                             fillColor: '#666'
                         };
-                        const op = undoRedoRef.current?.createPointOperation(snapped.x, snapped.y, attr);
+                        const op = undoRedoRef.current?.createPointOperation(raw.x, raw.y, attr);
                         if (op) undoRedoRef.current?.pushOperation(op);
                         updateUndoRedoState();
                         setFeedback('Bod vytvořen');

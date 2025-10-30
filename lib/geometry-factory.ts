@@ -26,10 +26,10 @@ export class GeometryFactory {
     return Math.max(baseEps, snapSize * 0.8)
   }
 
-  point(x: number, y: number, snap = true, attrs: CreateAttrs = {}) {
+  point(x: number, y: number, snap = false, attrs: CreateAttrs = {}) {
     const pt = this.board.create('point', [x, y], {
       name: '', size: 2, strokeColor: '#444', fillColor: '#666',
-      snapToGrid: snap, snapSizeX: WORLD_PER_MM, snapSizeY: WORLD_PER_MM,
+      snapToGrid: false,
       ...attrs
     })
     ;(pt as any)._rawName = ''
@@ -40,13 +40,8 @@ export class GeometryFactory {
    * Create a point with grid-aware snap settings
    */
   pointWithGrid(x: number, y: number, gridMode: GridMode, attrs: CreateAttrs = {}) {
-    const snap = gridMode !== 'none'
-    const snapSize = this.getSnapSize(gridMode)
-    return this.point(x, y, snap, {
-      snapSizeX: snapSize,
-      snapSizeY: snapSize,
-      ...attrs
-    })
+    // Always disable snapping for user-created points
+    return this.point(x, y, false, attrs)
   }
 
   segment(a: any, b: any, attrs: CreateAttrs = {}) {

@@ -4601,7 +4601,7 @@ class GeometryFactory {
         return Math.max(baseEps, snapSize * 0.8);
     }
     point(x, y) {
-        let snap = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : true, attrs = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : {};
+        let snap = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : false, attrs = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : {};
         const pt = this.board.create('point', [
             x,
             y
@@ -4610,9 +4610,7 @@ class GeometryFactory {
             size: 2,
             strokeColor: '#444',
             fillColor: '#666',
-            snapToGrid: snap,
-            snapSizeX: __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["WORLD_PER_MM"],
-            snapSizeY: __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["WORLD_PER_MM"],
+            snapToGrid: false,
             ...attrs
         });
         pt._rawName = '';
@@ -4622,13 +4620,8 @@ class GeometryFactory {
    * Create a point with grid-aware snap settings
    */ pointWithGrid(x, y, gridMode) {
         let attrs = arguments.length > 3 && arguments[3] !== void 0 ? arguments[3] : {};
-        const snap = gridMode !== 'none';
-        const snapSize = this.getSnapSize(gridMode);
-        return this.point(x, y, snap, {
-            snapSizeX: snapSize,
-            snapSizeY: snapSize,
-            ...attrs
-        });
+        // Always disable snapping for user-created points
+        return this.point(x, y, false, attrs);
     }
     segment(a, b) {
         let attrs = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};

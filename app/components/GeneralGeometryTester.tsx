@@ -11,6 +11,7 @@ import { GridMode } from '../../lib/grid-manager'
 import { BoardManager, JBoard } from '../../lib/board-manager'
 import { GeometryFactory } from '../../lib/geometry-factory'
 import { SelectionManager } from '../../lib/selection-manager'
+import { RenameManager } from '../../lib/rename-manager'
 
 const EPS = 0.05
 
@@ -96,6 +97,7 @@ export default function GeneralGeometryTester() {
   const renameModeRef = useRef(renameMode)
   const gridOptionRef = useRef(gridOption)
   const handleClickRef = useRef<((brd: JBoard, e: any) => void) | null>(null)
+  const renameMgrRef = useRef<RenameManager | null>(null)
   
   // Rename mode refs for down+up approach
   const renameArmRef = useRef<{ pt:any|null, wasFixed:boolean }>(
@@ -107,6 +109,12 @@ export default function GeneralGeometryTester() {
   useEffect(() => { uiBusyRef.current = uiBusy }, [uiBusy])
   useEffect(() => { renameModeRef.current = renameMode }, [renameMode])
   useEffect(() => { gridOptionRef.current = gridOption }, [gridOption])
+  function setRenameEnabled(next: boolean) {
+    if (next) renameMgrRef.current?.enable()
+    else renameMgrRef.current?.disable()
+    setRenameMode(next)
+  }
+
 
   function pushCreated(obj: any) {
     if (obj && typeof obj === 'object' && 'id' in obj) setCreatedStack(s => [...s, obj.id])
@@ -382,7 +390,7 @@ export default function GeneralGeometryTester() {
       
       // Rename mode toggle
       if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey) {
-        setRenameMode(v => !v)
+        setRenameEnabled(!renameModeRef.current)
         return
       }
 
@@ -491,12 +499,46 @@ export default function GeneralGeometryTester() {
       EPS: EPS
     })
 
+    // Create rename manager and wire into undo/redo
+    const renameMgr = new RenameManager(brd, {
+      clickEps: 0.12,
+      promptLabel: 'Název bodu (např. A, B, C, A_1, A_2):',
+      eventGuard: (ev) => {
+        const t = ev?.originalEvent?.target as HTMLElement | null
+        if (t && (t.closest('.group') || t.classList?.contains('group'))) return false
+        return !uiBusyRef.current
+      },
+      onRenamed: ({ pointId, beforeRaw, afterRaw }) => {
+        if (beforeRaw === afterRaw) return
+        const pt: any = (brd.objects as any)[pointId]
+        if (!pt) return
+        const before = { x: pt.X(), y: pt.Y(), name: beforeRaw }
+        const after = { x: pt.X(), y: pt.Y(), name: afterRaw }
+        const op = undoRedoRef.current?.createModifyOperation(pointId, before, after)
+        if (op) {
+          undoRedoRef.current!.pushOperation(op)
+          updateUndoRedoState()
+        }
+      },
+    })
+    renameMgrRef.current = renameMgr
+    ;(window as any).__renameMgr = renameMgr
+
+    // Always forward board 'down' events to drawing handler
+    const boardDownHandler = (e: any) => {
+      handleClickRef.current?.(brd, e)
+    }
+    brd.on('down', boardDownHandler)
+
     return () => {
+      try { brd.off('down', boardDownHandler) } catch {}
       boardManager.free()
       boardManagerRef.current = null
       undoRedoRef.current = null
       geometryFactoryRef.current = null
       selectionManagerRef.current = null
+      try { renameMgrRef.current?.destroy() } catch {}
+      renameMgrRef.current = null
     }
   }, [])
 
@@ -520,106 +562,12 @@ export default function GeneralGeometryTester() {
     }
   }, [showSettings])
 
-  // Update event handlers when rename mode changes
+  // Hook rename mode state to manager enable/disable
   useEffect(() => {
-    const brd = boardManagerRef.current?.getBoard()
-    if (!brd) return
-
-    // Store references to our specific handlers so we can remove them properly
-    let currentDownHandler: ((e: any) => void) | null = null
-    let currentUpHandler: ((e: any) => void) | null = null
-
-    const CLICK_EPS = 0.12 // world units; tweak if needed
-
-    const openPrompt = (pt:any, e:any) => {
-      const currentRaw = (pt as any)._rawName || ''
-      let proposed = (window.prompt('Název bodu (např. A, B, C, A_1, A_2):', currentRaw) ?? '').trim()
-
-      if (proposed && isNameTaken(brd, proposed, (pt as any).id)) {
-        let i = 2
-        while (isNameTaken(brd, `${proposed}_${i}`, (pt as any).id)) i++
-        proposed = `${proposed}_${i}`
-      }
-
-      renamePoint(pt, proposed)
-
-      // Restore mobility
-      const arm = renameArmRef.current
-      ;(pt as any).setAttribute({ fixed: arm.wasFixed })
-
-      // Stop further board interaction from this click
-      if (e?.originalEvent) {
-        e.originalEvent.stopPropagation()
-        e.originalEvent.preventDefault()
-      }
-      brd.update()
-
-      if (!proposed) setRenameMode(false)
-
-      // Clear arm
-      renameArmRef.current = { pt:null, wasFixed:false }
-      downPosRef.current = null
-    }
-
-    // 1) DOWN: if in rename mode and on a point, FREEZE it and arm rename
-    currentDownHandler = (e:any) => {
-      if (uiBusyRef.current) return
-
-      // If not in rename mode, pass through to normal drawing handler and let undo-redo system handle drags
-      if (!renameModeRef.current) {
-        if (handleClickRef.current) handleClickRef.current(brd, e)
-        return
-      }
-
-      const pt = pointUnder(brd, e)
-      if (!pt) return
-
-      // Freeze now (before any drag begins)
-      const wasFixed = !!(pt as any).visProp.fixed
-      ;(pt as any).setAttribute({ fixed: true })
-
-      renameArmRef.current = { pt, wasFixed }
-      downPosRef.current = getMouseCoords(brd, e)
-
-      // Only prevent default behavior in rename mode
-      if (e.originalEvent) {
-        e.originalEvent.stopPropagation()
-        e.originalEvent.preventDefault()
-      }
-    }
-
-    // 2) UP: if we armed a point and movement was small → open prompt
-    currentUpHandler = (e:any) => {
-      const arm = renameArmRef.current
-      if (!arm.pt) return
-
-      const up = getMouseCoords(brd, e)
-      const down = downPosRef.current || up
-      const moved = Math.hypot(up.x - down.x, up.y - down.y)
-
-      // Only treat as rename if it was a click, not a drag
-      if (moved <= CLICK_EPS) {
-        openPrompt(arm.pt, e)
-        return
-      }
-
-      // If it was a drag after all, restore the point & abort rename
-      const { pt } = arm
-      ;(pt as any).setAttribute({ fixed: arm.wasFixed })
-      renameArmRef.current = { pt:null, wasFixed:false }
-      downPosRef.current = null
-    }
-
-    brd.on('down', currentDownHandler)
-    brd.on('up', currentUpHandler)
-
-    return () => {
-      try { 
-        if (currentDownHandler) brd.off('down', currentDownHandler)
-        if (currentUpHandler) brd.off('up', currentUpHandler)
-      } catch {}
-    }
-  }, [renameMode, renamePoint])
+    if (!renameMgrRef.current) return
+    if (renameMode) renameMgrRef.current.enable()
+    else renameMgrRef.current.disable()
+  }, [renameMode])
 
   function undoLast() {
     undoRedoRef.current?.undo()
@@ -914,7 +862,7 @@ export default function GeneralGeometryTester() {
                   <Eraser size={18}/> Guma
                 </button>
                 <button 
-                  onClick={() => setRenameMode(v => !v)}
+                  onClick={() => setRenameEnabled(!renameMode)}
                   className={`px-3 py-2 rounded flex items-center gap-2 ${
                     renameMode ? 'bg-teal-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-teal-50 border border-gray-300'
                   }`}

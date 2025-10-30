@@ -13,6 +13,7 @@ import { GeometryFactory } from '../../lib/geometry-factory'
 import { SelectionManager } from '../../lib/selection-manager'
 import { RenameManager } from '../../lib/rename-manager'
 import { WORLD_PER_MM, WORLD_PER_CM } from '../../lib/measurement-scale'
+import SelectObjectsTool from '../../lib/select-objects-tool'
 
 const EPS = 0.05
 
@@ -64,8 +65,9 @@ export default function GeneralGeometryTester() {
   const undoRedoRef = useRef<UndoRedoManager | null>(null)
   const geometryFactoryRef = useRef<GeometryFactory | null>(null)
   const selectionManagerRef = useRef<SelectionManager | null>(null)
+  const selectToolRef = useRef<SelectObjectsTool | null>(null)
 
-  const [tool, setTool] = useState<'mouse'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
+  const [tool, setTool] = useState<'mouse'|'select'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
   const [feedback, setFeedback] = useState('')
   const [data, setData] = useState<any>(null)
   const [createdStack, setCreatedStack] = useState<string[]>([])
@@ -525,8 +527,13 @@ export default function GeneralGeometryTester() {
     renameMgrRef.current = renameMgr
     ;(window as any).__renameMgr = renameMgr
 
+    // Create SelectObjectsTool
+    selectToolRef.current = new SelectObjectsTool(brd, setFeedback)
+
     // Always forward board 'down' events to drawing handler
     const boardDownHandler = (e: any) => {
+      // Do not trigger drawing handler when select tool is active
+      if (toolRef.current === 'select') return;
       handleClickRef.current?.(brd, e)
     }
     brd.on('down', boardDownHandler)
@@ -540,6 +547,9 @@ export default function GeneralGeometryTester() {
       selectionManagerRef.current = null
       try { renameMgrRef.current?.destroy() } catch {}
       renameMgrRef.current = null
+      // On component cleanup/unmount (inside relevant useEffect or cleanup), only use deactivate on selectToolRef
+      if (selectToolRef.current) selectToolRef.current.deactivate()
+      selectToolRef.current = null
     }
   }, [])
 
@@ -727,6 +737,19 @@ export default function GeneralGeometryTester() {
     setFeedback('Konstrukce načtena')
   }
 
+  useEffect(() => {
+    const brd = boardManagerRef.current?.getBoard()
+    if (!brd) return
+    if (!selectToolRef.current) {
+      selectToolRef.current = new SelectObjectsTool(brd, setFeedback)
+    }
+    if (tool === 'select') {
+      selectToolRef.current.activate()
+    } else {
+      selectToolRef.current.deactivate()
+    }
+  }, [tool])
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto">
@@ -853,6 +876,22 @@ export default function GeneralGeometryTester() {
               {/* Editing Tools Section */}
               <div className="flex items-center gap-2 pr-2 border-r border-gray-300">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2">Úpravy</span>
+                {/* Select Objects Tool */}
+                <button
+                  onClick={() => setTool('select')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'select' ? 'bg-purple-700 text-white shadow-md' : 'bg-white text-purple-700 hover:bg-purple-50 border border-purple-300'
+                  }`}
+                  title="Vybrat objekty"
+                >
+                  {/* Icon for Select Tool (dotted square, arrow) SVG */}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:'2px'}}>
+                    <rect x="4" y="4" width="12" height="12" rx="2" fill="none" strokeDasharray="3 2"/>
+                    <polyline points="11,13 15,13 15,17" strokeDasharray="0" />
+                    <polyline points="15,17 17,15 13,15" strokeDasharray="0" />
+                  </svg>
+                  Vybrat objekty
+                </button>
                 <button 
                   onClick={() => setTool('rubber')}
                   className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${

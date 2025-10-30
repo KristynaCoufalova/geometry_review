@@ -243,6 +243,7 @@
     --color-indigo-700: #432dd7;
     --color-purple-50: #faf5ff;
     --color-purple-200: #e9d5ff;
+    --color-purple-300: #d9b3ff;
     --color-purple-400: #c07eff;
     --color-purple-600: #9810fa;
     --color-purple-700: #8200da;
@@ -333,6 +334,7 @@
       --color-indigo-700: color(display-p3 .251282 .180274 .81203);
       --color-purple-50: color(display-p3 .977045 .961759 .996715);
       --color-purple-200: color(display-p3 .901181 .835978 .992237);
+      --color-purple-300: color(display-p3 .829394 .703737 .996084);
       --color-purple-400: color(display-p3 .719919 .492497 .995173);
       --color-purple-600: color(display-p3 .546729 .130167 .94439);
       --color-purple-700: color(display-p3 .465298 .0652579 .824397);
@@ -390,6 +392,7 @@
       --color-indigo-700: lab(32.4486% 49.2217 -84.6695);
       --color-purple-50: lab(97.1627% 2.99937 -4.13398);
       --color-purple-200: lab(87.8405% 13.4282 -18.7159);
+      --color-purple-300: lab(78.3298% 26.2195 -34.9499);
       --color-purple-400: lab(63.6946% 47.6127 -59.2066);
       --color-purple-600: lab(43.0295% 75.21 -86.5669);
       --color-purple-700: lab(36.1758% 69.8525 -80.0381);
@@ -1321,6 +1324,10 @@
     border-color: var(--color-purple-200);
   }
 
+  .border-purple-300 {
+    border-color: var(--color-purple-300);
+  }
+
   .border-red-500 {
     border-color: var(--color-red-500);
   }
@@ -1399,6 +1406,10 @@
 
   .bg-purple-600 {
     background-color: var(--color-purple-600);
+  }
+
+  .bg-purple-700 {
+    background-color: var(--color-purple-700);
   }
 
   .bg-red-50 {
@@ -1664,6 +1675,10 @@
     color: var(--color-purple-600);
   }
 
+  .text-purple-700 {
+    color: var(--color-purple-700);
+  }
+
   .text-red-500 {
     color: var(--color-red-500);
   }
@@ -1741,6 +1756,11 @@
 
   .blur {
     --tw-blur: blur(8px);
+    filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );
+  }
+
+  .invert {
+    --tw-invert: invert(100%);
     filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );
   }
 

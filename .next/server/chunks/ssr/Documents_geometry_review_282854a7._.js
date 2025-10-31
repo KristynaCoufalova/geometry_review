@@ -3008,6 +3008,7 @@ class UndoRedoManager {
     txnDepth = 0;
     pendingOps = [];
     suppressTracking = false;
+    suppressShapeTracking = false;
     moveStarts = new Map();
     groupDraggedPoints = new Set();
     trackingInterval = null;
@@ -3115,6 +3116,9 @@ class UndoRedoManager {
     suppressTrackingDuring(fn) {
         return this.withSuppressed(fn);
     }
+    setSuppressShapeTracking(on) {
+        this.suppressShapeTracking = on;
+    }
     dispose() {
         this.moveStarts.clear();
         if (this.trackingInterval) {
@@ -3201,14 +3205,19 @@ class UndoRedoManager {
         let before = null;
         let pts = [];
         const onDown = ()=>{
-            if (this.suppressTracking) return;
+            if (this.suppressTracking || this.suppressShapeTracking) return;
             pts = this.definingPointsOf(obj);
             if (pts.length === 0) return;
             before = {};
             for (const p of pts)before[p.id] = this.posOf(p);
         };
         const onUp = ()=>{
-            if (this.suppressTracking || !before || pts.length === 0) return;
+            if (this.suppressTracking || this.suppressShapeTracking) {
+                before = null;
+                pts = [];
+                return;
+            }
+            if (!before || pts.length === 0) return;
             const ops = [];
             for (const p of pts){
                 const b = before[p.id];
@@ -5313,6 +5322,7 @@ class SelectObjectsTool {
                 // This prevents individual point tracking from creating separate undo operations
                 if (this.undoRedo && pointIdsToClear.length > 0) {
                     this.undoRedo.markPointsForGroupDrag(pointIdsToClear);
+                    this.undoRedo.setSuppressShapeTracking(true);
                 }
                 // PREVENT DEFAULT: don't allow picked object's drag
                 if (e?.ev) {
@@ -5545,6 +5555,10 @@ class SelectObjectsTool {
                         this.undoRedo.unmarkPointsForGroupDrag(pointIdsToUnmark);
                     }
                 }
+            }
+            // Always turn off shape tracking suppression when ending group drag
+            if (this.undoRedo) {
+                this.undoRedo.setSuppressShapeTracking(false);
             }
             this.isGroupDragging = false;
             this.dragTargetObj = null;

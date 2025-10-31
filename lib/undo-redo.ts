@@ -56,6 +56,7 @@ export class UndoRedoManager {
   private txnDepth = 0
   private pendingOps: Operation[] = []
   private suppressTracking = false
+  private suppressShapeTracking = false
   private moveStarts = new Map<string, { x: number; y: number; name: string }>()
   private groupDraggedPoints = new Set<string>()
   private trackingInterval: NodeJS.Timeout | null = null
@@ -173,6 +174,10 @@ export class UndoRedoManager {
     return this.withSuppressed(fn)
   }
 
+  public setSuppressShapeTracking(on: boolean): void {
+    this.suppressShapeTracking = on
+  }
+
   public dispose(): void {
     this.moveStarts.clear()
     if (this.trackingInterval) {
@@ -255,7 +260,7 @@ export class UndoRedoManager {
     let pts: any[] = []
 
     const onDown = () => {
-      if (this.suppressTracking) return
+      if (this.suppressTracking || this.suppressShapeTracking) return
       pts = this.definingPointsOf(obj)
       if (pts.length === 0) return
       before = {}
@@ -263,7 +268,12 @@ export class UndoRedoManager {
     }
 
     const onUp = () => {
-      if (this.suppressTracking || !before || pts.length === 0) return
+      if (this.suppressTracking || this.suppressShapeTracking) {
+        before = null
+        pts = []
+        return
+      }
+      if (!before || pts.length === 0) return
       const ops: Operation[] = []
       for (const p of pts) {
         const b = before![p.id]

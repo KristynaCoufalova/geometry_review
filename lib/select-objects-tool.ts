@@ -242,6 +242,7 @@ export default class SelectObjectsTool {
         // This prevents individual point tracking from creating separate undo operations
         if (this.undoRedo && pointIdsToClear.length > 0) {
           this.undoRedo.markPointsForGroupDrag(pointIdsToClear);
+          this.undoRedo.setSuppressShapeTracking(true);
         }
         // PREVENT DEFAULT: don't allow picked object's drag
         if (e?.ev) { e.ev.preventDefault?.(); e.ev.stopPropagation?.(); }
@@ -437,6 +438,11 @@ export default class SelectObjectsTool {
             this.undoRedo.unmarkPointsForGroupDrag(pointIdsToUnmark);
           }
         }
+      }
+      
+      // Always turn off shape tracking suppression when ending group drag
+      if (this.undoRedo) {
+        this.undoRedo.setSuppressShapeTracking(false);
       }
       
       this.isGroupDragging = false;

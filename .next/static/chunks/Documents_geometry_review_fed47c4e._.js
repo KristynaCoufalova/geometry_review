@@ -3238,6 +3238,9 @@ class UndoRedoManager {
     suppressTrackingDuring(fn) {
         return this.withSuppressed(fn);
     }
+    setSuppressShapeTracking(on) {
+        this.suppressShapeTracking = on;
+    }
     dispose() {
         this.moveStarts.clear();
         if (this.trackingInterval) {
@@ -3327,14 +3330,19 @@ class UndoRedoManager {
         let before = null;
         let pts = [];
         const onDown = ()=>{
-            if (this.suppressTracking) return;
+            if (this.suppressTracking || this.suppressShapeTracking) return;
             pts = this.definingPointsOf(obj);
             if (pts.length === 0) return;
             before = {};
             for (const p of pts)before[p.id] = this.posOf(p);
         };
         const onUp = ()=>{
-            if (this.suppressTracking || !before || pts.length === 0) return;
+            if (this.suppressTracking || this.suppressShapeTracking) {
+                before = null;
+                pts = [];
+                return;
+            }
+            if (!before || pts.length === 0) return;
             const ops = [];
             for (const p of pts){
                 const b = before[p.id];
@@ -4071,6 +4079,7 @@ class UndoRedoManager {
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "txnDepth", 0);
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "pendingOps", []);
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "suppressTracking", false);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "suppressShapeTracking", false);
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "moveStarts", new Map());
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "groupDraggedPoints", new Set());
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "trackingInterval", null);
@@ -5913,6 +5922,7 @@ class SelectObjectsTool {
                     // This prevents individual point tracking from creating separate undo operations
                     if (this.undoRedo && pointIdsToClear.length > 0) {
                         this.undoRedo.markPointsForGroupDrag(pointIdsToClear);
+                        this.undoRedo.setSuppressShapeTracking(true);
                     }
                     // PREVENT DEFAULT: don't allow picked object's drag
                     if (e === null || e === void 0 ? void 0 : e.ev) {
@@ -6156,6 +6166,10 @@ class SelectObjectsTool {
                             this.undoRedo.unmarkPointsForGroupDrag(pointIdsToUnmark);
                         }
                     }
+                }
+                // Always turn off shape tracking suppression when ending group drag
+                if (this.undoRedo) {
+                    this.undoRedo.setSuppressShapeTracking(false);
                 }
                 this.isGroupDragging = false;
                 this.dragTargetObj = null;

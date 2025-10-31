@@ -16,6 +16,8 @@ import { GridMode } from '../../lib/grid-manager'
 import { BoardManager, JBoard } from '../../lib/board-manager'
 import { GeometryFactory } from '../../lib/geometry-factory'
 import { SelectionManager } from '../../lib/selection-manager'
+import { RenameManager } from '../../lib/rename-manager'
+import SelectObjectsTool from '../../lib/select-objects-tool'
 import { calculateCenteredBoundingBoxCm, WORLD_PER_MM, WORLD_PER_CM } from '../../lib/measurement-scale'
 
 // Using JBoard from BoardManager
@@ -124,7 +126,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   const geometryFactoryRef = useRef<GeometryFactory | null>(null)
   const selectionManagerRef = useRef<SelectionManager | null>(null)
 
-  const [tool, setTool] = useState<'mouse'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
+  const [tool, setTool] = useState<'mouse'|'select'|'point'|'segment'|'line'|'circle'|'rubber'>('mouse')
   const [selected, setSelected] = useState<any[]>([])
   const [feedback, setFeedback] = useState('')
   const [data, setData] = useState<any>(null)
@@ -152,18 +154,29 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   const [canRedoState, setCanRedoState] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [renameMode, setRenameMode] = useState(false)
 
   const toolRef = useRef(tool)
   const selectedRef = useRef(selected)
   const uiBusyRef = useRef(uiBusy)
   const gridOptionRef = useRef(gridOption)
+  const renameModeRef = useRef(renameMode)
   const handleClickRef = useRef<((brd: JBoard, e: any) => void) | null>(null)
   const givensRef = useRef<any>(null)
+  const renameMgrRef = useRef<RenameManager | null>(null)
+  const selectToolRef = useRef<SelectObjectsTool | null>(null)
   
   useEffect(() => { toolRef.current = tool }, [tool])
   useEffect(() => { selectedRef.current = selected }, [selected])
   useEffect(() => { uiBusyRef.current = uiBusy }, [uiBusy])
   useEffect(() => { gridOptionRef.current = gridOption }, [gridOption])
+  useEffect(() => { renameModeRef.current = renameMode }, [renameMode])
+  
+  function setRenameEnabled(next: boolean) {
+    if (next) renameMgrRef.current?.enable()
+    else renameMgrRef.current?.disable()
+    setRenameMode(next)
+  }
   
 
   // Timer effect
@@ -404,8 +417,17 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     return pt
   }, [gridOption])
 
+  // 'A_12' -> 'A₁₂'
+  function toSubscript(name: string) {
+    const map: Record<string,string> = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉' }
+    return name.replace(/_(\d+)/g, (_, d) => d.split('').map((ch: string) => map[ch] ?? ch).join(''))
+  }
+
   const handleClick = useCallback((brd: JBoard, e: any) => {
     if (uiBusyRef.current) return
+    
+    // Prevent tools from firing while in rename mode
+    if (renameModeRef.current) return
     
     // Check if the click is on a physical tool - if so, don't handle it
     const target = e.originalEvent?.target as HTMLElement
@@ -565,18 +587,31 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
 
   useEffect(() => { handleClickRef.current = handleClick }, [handleClick])
 
-  // Keyboard shortcuts for undo/redo
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
+      if (uiBusyRef.current) return
+      
+      // Rename mode toggle
+      if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey) {
+        setRenameEnabled(!renameModeRef.current)
+        return
+      }
+
+      // Undo (Ctrl+Z or Cmd+Z)
       if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.preventDefault()
         undoRedoRef.current?.undo()
         updateUndoRedoState()
+        return
       }
+
+      // Redo (Ctrl+Shift+Z or Cmd+Shift+Z)
       if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && e.shiftKey) {
         e.preventDefault()
         undoRedoRef.current?.redo()
         updateUndoRedoState()
+        return
       }
     }
     window.addEventListener('keydown', handleKeyPress)
@@ -671,6 +706,33 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     selectionManagerRef.current = new SelectionManager()
     undoRedoRef.current = new UndoRedoManager({ board: brd, onFeedback: setFeedback, EPS })
 
+    // Create rename manager and wire into undo/redo
+    const renameMgr = new RenameManager(brd, {
+      clickEps: 0.12,
+      promptLabel: 'Název bodu (např. A, B, C, A_1, A_2):',
+      eventGuard: (ev) => {
+        const t = ev?.originalEvent?.target as HTMLElement | null
+        if (t && (t.closest('.group') || t.classList?.contains('group'))) return false
+        return !uiBusyRef.current
+      },
+      onRenamed: ({ pointId, beforeRaw, afterRaw }) => {
+        if (beforeRaw === afterRaw) return
+        const pt: any = (brd.objects as any)[pointId]
+        if (!pt) return
+        const before = { x: pt.X(), y: pt.Y(), name: beforeRaw }
+        const after = { x: pt.X(), y: pt.Y(), name: afterRaw }
+        const op = undoRedoRef.current?.createModifyOperation(pointId, before, after)
+        if (op) {
+          undoRedoRef.current!.pushOperation(op)
+          updateUndoRedoState()
+        }
+      },
+    })
+    renameMgrRef.current = renameMgr
+
+    // Create SelectObjectsTool
+    selectToolRef.current = new SelectObjectsTool(brd, setFeedback, undoRedoRef.current)
+
     // Track point moves as modify operations
     function attachModifyListeners(el:any) {
       if (!el || el.elType !== 'point' || el.visProp?.fixed) return
@@ -696,10 +758,13 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
       attachModifyListeners(o)
     })
 
-    const downHandler = (e: any) => {
-      if (handleClickRef.current) handleClickRef.current(brd, e);
-    };
-    brd.on('down', downHandler);
+    // Always forward board 'down' events to drawing handler
+    const boardDownHandler = (e: any) => {
+      // Do not trigger drawing handler when select tool is active
+      if (toolRef.current === 'select') return;
+      handleClickRef.current?.(brd, e)
+    }
+    brd.on('down', boardDownHandler)
 
     // Make sure the SVG sizes correctly once visible
     setTimeout(() => {
@@ -710,10 +775,15 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     }, 0);
 
     return () => {
-      try { brd.off('down', downHandler) } catch {}
+      try { brd.off('down', boardDownHandler) } catch {}
       undoRedoRef.current = null
       geometryFactoryRef.current = null
       selectionManagerRef.current = null
+      try { renameMgrRef.current?.destroy() } catch {}
+      renameMgrRef.current = null
+      // On component cleanup/unmount, only use deactivate on selectToolRef
+      if (selectToolRef.current) selectToolRef.current.deactivate()
+      selectToolRef.current = null
       boardManager.free()
       boardManagerRef.current = null
       givensRef.current = null;
@@ -724,6 +794,27 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   useEffect(() => {
     boardManagerRef.current?.setGridMode(gridOption)
   }, [gridOption])
+
+  // Hook rename mode state to manager enable/disable
+  useEffect(() => {
+    if (!renameMgrRef.current) return
+    if (renameMode) renameMgrRef.current.enable()
+    else renameMgrRef.current.disable()
+  }, [renameMode])
+
+  // Activate/deactivate select tool when tool changes
+  useEffect(() => {
+    const brd = boardManagerRef.current?.getBoard()
+    if (!brd) return
+    if (!selectToolRef.current) {
+      selectToolRef.current = new SelectObjectsTool(brd, setFeedback, undoRedoRef.current || undefined)
+    }
+    if (tool === 'select') {
+      selectToolRef.current.activate()
+    } else {
+      selectToolRef.current.deactivate()
+    }
+  }, [tool])
 
   // Create givens when question loads AND the board is ready
   useEffect(() => {
@@ -1100,6 +1191,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
                     <li>• <strong>Úsečka:</strong> Klikněte na dva body</li>
                     <li>• <strong>Přímka:</strong> Klikněte na dva body</li>
                     <li>• <strong>Kružnice:</strong> Střed a bod na kružnici</li>
+                    <li>• <strong>Vybrat objekty:</strong> Výběr a přesun více objektů</li>
                     <li>• <strong>Guma:</strong> Smazání objektu</li>
                   </ul>
                 </div>
@@ -1121,6 +1213,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
                   Klávesové zkratky:
                 </h4>
                 <ul className="space-y-1 text-sm text-blue-700">
+                  <li>• <strong>N:</strong> Režim přejmenování bodů</li>
                   <li>• <strong>Ctrl/Cmd + Z:</strong> Zpět (Undo)</li>
                   <li>• <strong>Ctrl/Cmd + Shift + Z:</strong> Znovu (Redo)</li>
                   <li>• <strong>Delete:</strong> Smazat vybraný objekt (když je aktivní guma)</li>
@@ -1190,6 +1283,22 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
               {/* Editing Tools Section */}
               <div className="flex items-center gap-2 pr-2 border-r border-gray-300">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2">Úpravy</span>
+                {/* Select Objects Tool */}
+                <button
+                  onClick={() => setTool('select')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'select' ? 'bg-purple-700 text-white shadow-md' : 'bg-white text-purple-700 hover:bg-purple-50 border border-purple-300'
+                  }`}
+                  title="Vybrat objekty"
+                >
+                  {/* Icon for Select Tool (dotted square, arrow) SVG */}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:'2px'}}>
+                    <rect x="4" y="4" width="12" height="12" rx="2" fill="none" strokeDasharray="3 2"/>
+                    <polyline points="11,13 15,13 15,17" strokeDasharray="0" />
+                    <polyline points="15,17 17,15 13,15" strokeDasharray="0" />
+                  </svg>
+                  Vybrat objekty
+                </button>
                 <button 
                   onClick={() => setTool('rubber')}
                   className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
@@ -1198,6 +1307,15 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
                   title="Guma - Smazání objektu"
                 >
                   <Eraser size={18}/> Guma
+                </button>
+                <button 
+                  onClick={() => setRenameEnabled(!renameMode)}
+                  className={`px-3 py-2 rounded flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    renameMode ? 'bg-teal-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-teal-50 border border-gray-300'
+                  }`}
+                  title="Přejmenovat bod (klikněte na bod)"
+                >
+                  ✎ Název bodu
                 </button>
               </div>
             

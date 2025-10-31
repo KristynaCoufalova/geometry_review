@@ -5331,6 +5331,1143 @@ if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelper
     __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
 }
 }),
+"[project]/Documents/geometry_review/lib/rename-manager.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "RenameManager",
+    ()=>RenameManager
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/@swc/helpers/esm/_define_property.js [app-client] (ecmascript)");
+;
+class RenameManager {
+    /** Attach event listeners */ enable() {
+        if (this.enabled) return;
+        this.enabled = true;
+        this.downHandler = (e)=>{
+            if (!this.opts.eventGuard(e)) return;
+            const pt = this.pointUnder(e);
+            if (!pt) return;
+            // Freeze to prevent accidental drags while we decide if it's a click
+            const wasFixed = !!pt.visProp.fixed;
+            pt.setAttribute({
+                fixed: true
+            });
+            this.armed = {
+                pt,
+                wasFixed
+            };
+            this.downPos = this.getMouseXY(e);
+            // stop normal board interaction for this click
+            stopEvent(e);
+        };
+        this.upHandler = (e)=>{
+            if (!this.armed.pt) return;
+            const up = this.getMouseXY(e);
+            var _this_downPos;
+            const down = (_this_downPos = this.downPos) !== null && _this_downPos !== void 0 ? _this_downPos : up;
+            const moved = Math.hypot(up.x - down.x, up.y - down.y);
+            if (moved <= this.opts.clickEps) {
+                // Treat as click -> prompt & rename
+                this.promptAndRename(this.armed.pt, e);
+            } else {
+                // Treat as drag -> restore and do nothing
+                this.armed.pt.setAttribute({
+                    fixed: this.armed.wasFixed
+                });
+            }
+            // clear arm
+            this.armed = {
+                pt: null,
+                wasFixed: false
+            };
+            this.downPos = null;
+        };
+        this.brd.on('down', this.downHandler);
+        this.brd.on('up', this.upHandler);
+    }
+    /** Detach event listeners */ disable() {
+        if (!this.enabled) return;
+        this.enabled = false;
+        try {
+            if (this.downHandler) this.brd.off('down', this.downHandler);
+            if (this.upHandler) this.brd.off('up', this.upHandler);
+        } catch (e) {}
+        this.downHandler = null;
+        this.upHandler = null;
+        this.armed = {
+            pt: null,
+            wasFixed: false
+        };
+        this.downPos = null;
+    }
+    toggle() {
+        this.enabled ? this.disable() : this.enable();
+    }
+    destroy() {
+        this.disable();
+    }
+    // ---------- helpers ----------
+    getMouseXY(e) {
+        const c = this.brd.getUsrCoordsOfMouse(e);
+        return {
+            x: c[0],
+            y: c[1]
+        };
+    }
+    pointUnder(e) {
+        const under = this.brd.getAllObjectsUnderMouse(e);
+        return under.find((o)=>o.elType === 'point') || null;
+    }
+    isNameTaken(raw, exceptId) {
+        for(const key in this.brd.objects){
+            const o = this.brd.objects[key];
+            if ((o === null || o === void 0 ? void 0 : o.elType) === 'point' && o.id !== exceptId) {
+                var _o__rawName;
+                if (((_o__rawName = o._rawName) !== null && _o__rawName !== void 0 ? _o__rawName : '') === raw) return true;
+            }
+        }
+        return false;
+    }
+    toSubscript(name) {
+        const map = {
+            '0': '₀',
+            '1': '₁',
+            '2': '₂',
+            '3': '₃',
+            '4': '₄',
+            '5': '₅',
+            '6': '₆',
+            '7': '₇',
+            '8': '₈',
+            '9': '₉'
+        };
+        return (name || '').replace(/_(\d+)/g, (_, d)=>d.split('').map((ch)=>{
+                var _map_ch;
+                return (_map_ch = map[ch]) !== null && _map_ch !== void 0 ? _map_ch : ch;
+            }).join(''));
+    }
+    normalizeAndApplyName(pt, raw) {
+        const trimmed = (raw || '').trim();
+        const pretty = this.toSubscript(trimmed);
+        pt.setAttribute({
+            name: pretty,
+            withLabel: !!trimmed
+        });
+        pt._rawName = trimmed;
+    }
+    promptAndRename(pt, e) {
+        const beforeRaw = pt._rawName || '';
+        var _window_prompt;
+        let proposed = ((_window_prompt = window.prompt(this.opts.promptLabel, beforeRaw)) !== null && _window_prompt !== void 0 ? _window_prompt : '').trim();
+        // Deduplicate if necessary
+        if (proposed) {
+            if (this.isNameTaken(proposed, pt.id)) {
+                let i = 2;
+                while(this.isNameTaken("".concat(proposed, "_").concat(i), pt.id))i++;
+                proposed = "".concat(proposed, "_").concat(i);
+            }
+        }
+        this.normalizeAndApplyName(pt, proposed);
+        // Restore mobility
+        pt.setAttribute({
+            fixed: this.armed.wasFixed
+        });
+        // Push the rename event upward for undo/redo
+        this.opts.onRenamed({
+            pointId: pt.id,
+            beforeRaw,
+            afterRaw: proposed || ''
+        });
+        if (this.opts.updateBoard) this.brd.update();
+        // stop this click from leaking into normal handlers
+        stopEvent(e);
+    }
+    constructor(board, options){
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "brd", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "opts", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "enabled", false);
+        // internal state for down/up logic
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "armed", {
+            pt: null,
+            wasFixed: false
+        });
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "downPos", null);
+        // handlers references so we can cleanly detach
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "downHandler", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "upHandler", null);
+        this.brd = board;
+        var _options_clickEps, _options_promptLabel, _options_onRenamed, _options_updateBoard, _options_eventGuard;
+        this.opts = {
+            clickEps: (_options_clickEps = options === null || options === void 0 ? void 0 : options.clickEps) !== null && _options_clickEps !== void 0 ? _options_clickEps : 0.12,
+            promptLabel: (_options_promptLabel = options === null || options === void 0 ? void 0 : options.promptLabel) !== null && _options_promptLabel !== void 0 ? _options_promptLabel : 'Název bodu (např. A, B, C, A_1, A_2):',
+            onRenamed: (_options_onRenamed = options === null || options === void 0 ? void 0 : options.onRenamed) !== null && _options_onRenamed !== void 0 ? _options_onRenamed : ()=>{},
+            updateBoard: (_options_updateBoard = options === null || options === void 0 ? void 0 : options.updateBoard) !== null && _options_updateBoard !== void 0 ? _options_updateBoard : true,
+            eventGuard: (_options_eventGuard = options === null || options === void 0 ? void 0 : options.eventGuard) !== null && _options_eventGuard !== void 0 ? _options_eventGuard : defaultEventGuard
+        };
+    }
+}
+// ---------- small utilities ----------
+function stopEvent(e) {
+    if (e === null || e === void 0 ? void 0 : e.originalEvent) {
+        var _e_originalEvent_stopPropagation, _e_originalEvent, _e_originalEvent_preventDefault, _e_originalEvent1;
+        (_e_originalEvent_stopPropagation = (_e_originalEvent = e.originalEvent).stopPropagation) === null || _e_originalEvent_stopPropagation === void 0 ? void 0 : _e_originalEvent_stopPropagation.call(_e_originalEvent);
+        (_e_originalEvent_preventDefault = (_e_originalEvent1 = e.originalEvent).preventDefault) === null || _e_originalEvent_preventDefault === void 0 ? void 0 : _e_originalEvent_preventDefault.call(_e_originalEvent1);
+    }
+}
+/** Default guard: ignore clicks on anything inside your physical tools (elements with .group) */ function defaultEventGuard(e) {
+    var _e_originalEvent, _t_classList;
+    const t = e === null || e === void 0 ? void 0 : (_e_originalEvent = e.originalEvent) === null || _e_originalEvent === void 0 ? void 0 : _e_originalEvent.target;
+    if (!t) return true;
+    return !(t.closest('.group') || ((_t_classList = t.classList) === null || _t_classList === void 0 ? void 0 : _t_classList.contains('group')));
+}
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/Documents/geometry_review/lib/select-objects-tool.ts [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "default",
+    ()=>SelectObjectsTool
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/@swc/helpers/esm/_define_property.js [app-client] (ecmascript)");
+;
+function dist2(a, b) {
+    return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+}
+class SelectObjectsTool {
+    activate() {
+        if (this.onDown) return;
+        this.onDown = this.handleDown;
+        this.onMove = this.handleMove;
+        this.onUp = this.handleUp;
+        this.board.on('down', this.onDown);
+        this.board.on('move', this.onMove);
+        this.board.on('up', this.onUp);
+        // 🔒 Kill native selection / drag on the container (Safari-friendly)
+        const el = this.board.containerObj;
+        if (el) {
+            el.style.cursor = 'default';
+            el.style.userSelect = 'none';
+            el.style.webkitUserSelect = 'none';
+            el.style.msUserSelect = 'none';
+            el.style.touchAction = 'none';
+            el.style.webkitUserDrag = 'none';
+            el.setAttribute('draggable', 'false');
+        }
+        this.onKey = this.handleKey;
+        window.addEventListener('keydown', this.onKey, {
+            capture: true
+        });
+    }
+    deactivate() {
+        if (this.onDown) this.board.off('down', this.onDown);
+        if (this.onMove) this.board.off('move', this.onMove);
+        if (this.onUp) this.board.off('up', this.onUp);
+        this.onDown = this.onMove = this.onUp = undefined;
+        if (this.onKey) window.removeEventListener('keydown', this.onKey, {
+            capture: true
+        });
+        this.clearSelection();
+        this.clearHover();
+        this.destroyMarquee();
+        if (this.board.containerObj) {
+            this.board.containerObj.style.cursor = '';
+        }
+    }
+    /**
+   * Identify grid lines created by GridManager regardless of stroke width.
+   * Matches exact properties set in GridManager: layer 0, fixed, no label/infobox, not draggable.
+   */ isGridLine(obj) {
+        if (!obj) return false;
+        // Prefer authoritative ID-based check written by GridManager
+        try {
+            const gridIds = this.board.__gridIds;
+            if (gridIds && gridIds.has(obj.id)) return true;
+        } catch (e) {}
+        // Fallback: property-based detection
+        if (obj.elType !== 'line') return false;
+        const vp = obj.visProp || {};
+        if (vp.layer !== 0) return false;
+        if (vp.fixed !== true) return false;
+        if (vp.withLabel !== false) return false;
+        if (vp.showInfobox !== false) return false;
+        if (vp.draggable !== false) return false;
+        return true;
+    }
+    /** Return true if object is user-selectable (not a grid line or selection helper). */ isSelectableObject(obj) {
+        var _obj_visProp;
+        if (!obj || ((_obj_visProp = obj.visProp) === null || _obj_visProp === void 0 ? void 0 : _obj_visProp.visible) === false) return false;
+        try {
+            if (this.selectionHelperIds.has(obj.id)) return false;
+        } catch (e) {}
+        if (this.isGridLine(obj)) return false;
+        return true;
+    }
+    // -----------------------
+    // Hover logic
+    // -----------------------
+    setHover(obj) {
+        if (obj === this.hoverObj) return;
+        if (this.hoverObj) this.setTempHighlight(this.hoverObj, false);
+        this.hoverObj = obj;
+        if (obj) this.setTempHighlight(obj, true);
+        this.board.update();
+    }
+    clearHover() {
+        this.setHover(null);
+    }
+    // -----------------------
+    // Selection logic
+    // -----------------------
+    replaceSelectionWith(obj) {
+        var _this_onFeedback, _this;
+        this.clearSelection();
+        this.addToSelection(obj);
+        (_this_onFeedback = (_this = this).onFeedback) === null || _this_onFeedback === void 0 ? void 0 : _this_onFeedback.call(_this, 'Objekt vybrán');
+    }
+    toggleSelect(obj) {
+        var _this_onFeedback, _this;
+        if (this.selected.has(obj)) {
+            this.removeFromSelection(obj);
+        } else {
+            this.addToSelection(obj);
+        }
+        (_this_onFeedback = (_this = this).onFeedback) === null || _this_onFeedback === void 0 ? void 0 : _this_onFeedback.call(_this, "".concat(this.selected.size, " vybráno"));
+    }
+    addToSelection(obj) {
+        if (this.selected.has(obj)) return;
+        this.selected.add(obj);
+        if (!this.savedStyle.has(obj)) {
+            var _visProp;
+            const vp = (_visProp = obj.visProp) !== null && _visProp !== void 0 ? _visProp : {};
+            this.savedStyle.set(obj, {
+                strokeColor: vp.strokeColor,
+                strokeWidth: vp.strokeWidth,
+                fillColor: vp.fillColor,
+                fillOpacity: vp.fillOpacity,
+                highlight: vp.highlight,
+                size: vp.size // Save point size for restoration
+            });
+        }
+        this.applySelectedStyle(obj, true);
+    }
+    removeFromSelection(obj) {
+        if (!this.selected.has(obj)) return;
+        this.applySelectedStyle(obj, false);
+        this.selected.delete(obj);
+    }
+    clearSelection() {
+        this.selected.forEach((o)=>this.applySelectedStyle(o, false));
+        this.selected.clear();
+        this.board.update(); // ensure deselection happens instantly
+    }
+    applySelectedStyle(obj, on) {
+        const saved = this.savedStyle.get(obj);
+        var _visProp;
+        const vp = (_visProp = obj.visProp) !== null && _visProp !== void 0 ? _visProp : {};
+        if (typeof obj.setProperty === 'function') {
+            if (on) {
+                // For points: enlarge them
+                if (obj.elType === 'point') {
+                    var _this;
+                    var _size, _ref;
+                    const originalSize = (_ref = (_size = (_this = saved) === null || _this === void 0 ? void 0 : _this.size) !== null && _size !== void 0 ? _size : vp.size) !== null && _ref !== void 0 ? _ref : 2;
+                    obj.setProperty({
+                        highlight: true,
+                        size: Math.max(originalSize * 1.8, 4) // Enlarge point by 80% or minimum 4
+                    });
+                } else {
+                    var _this1;
+                    var _strokeWidth, _ref1;
+                    // For other objects: keep original color, increase stroke width slightly, add highlight
+                    const originalStrokeWidth = (_ref1 = (_strokeWidth = (_this1 = saved) === null || _this1 === void 0 ? void 0 : _this1.strokeWidth) !== null && _strokeWidth !== void 0 ? _strokeWidth : vp.strokeWidth) !== null && _ref1 !== void 0 ? _ref1 : 1;
+                    obj.setProperty({
+                        highlight: true,
+                        strokeWidth: Math.max(originalStrokeWidth * 1.5, originalStrokeWidth + 1)
+                    });
+                }
+            } else {
+                var _this2, _this3, _this4, _this5, _this6;
+                var _strokeColor, _strokeWidth1, _fillColor, _fillOpacity, _size1;
+                // Restore original style
+                obj.setProperty({
+                    strokeColor: (_strokeColor = (_this2 = saved) === null || _this2 === void 0 ? void 0 : _this2.strokeColor) !== null && _strokeColor !== void 0 ? _strokeColor : vp.strokeColor,
+                    strokeWidth: (_strokeWidth1 = (_this3 = saved) === null || _this3 === void 0 ? void 0 : _this3.strokeWidth) !== null && _strokeWidth1 !== void 0 ? _strokeWidth1 : vp.strokeWidth,
+                    fillColor: (_fillColor = (_this4 = saved) === null || _this4 === void 0 ? void 0 : _this4.fillColor) !== null && _fillColor !== void 0 ? _fillColor : vp.fillColor,
+                    fillOpacity: (_fillOpacity = (_this5 = saved) === null || _this5 === void 0 ? void 0 : _this5.fillOpacity) !== null && _fillOpacity !== void 0 ? _fillOpacity : vp.fillOpacity,
+                    highlight: false,
+                    size: (_size1 = (_this6 = saved) === null || _this6 === void 0 ? void 0 : _this6.size) !== null && _size1 !== void 0 ? _size1 : vp.size
+                });
+            }
+        } else if (obj.visProp) {
+            var _obj_update;
+            if (on) {
+                if (obj.elType === 'point') {
+                    var _this7;
+                    var _size2, _ref2;
+                    // Enlarge point
+                    const originalSize = (_ref2 = (_size2 = (_this7 = saved) === null || _this7 === void 0 ? void 0 : _this7.size) !== null && _size2 !== void 0 ? _size2 : vp.size) !== null && _ref2 !== void 0 ? _ref2 : 2;
+                    obj.visProp.highlight = true;
+                    obj.visProp.size = Math.max(originalSize * 1.8, 4);
+                } else {
+                    var _this8;
+                    var _strokeWidth2, _ref3;
+                    // Keep original color, increase stroke width slightly, add highlight
+                    const originalStrokeWidth = (_ref3 = (_strokeWidth2 = (_this8 = saved) === null || _this8 === void 0 ? void 0 : _this8.strokeWidth) !== null && _strokeWidth2 !== void 0 ? _strokeWidth2 : vp.strokeWidth) !== null && _ref3 !== void 0 ? _ref3 : 1;
+                    obj.visProp.highlight = true;
+                    obj.visProp.strokeWidth = Math.max(originalStrokeWidth * 1.5, originalStrokeWidth + 1);
+                }
+            } else {
+                var _this9, _this10, _this11, _this12, _this13;
+                // Restore original style
+                const objVp = obj.visProp;
+                var _strokeColor1;
+                objVp.strokeColor = (_strokeColor1 = (_this9 = saved) === null || _this9 === void 0 ? void 0 : _this9.strokeColor) !== null && _strokeColor1 !== void 0 ? _strokeColor1 : objVp.strokeColor;
+                var _strokeWidth3;
+                objVp.strokeWidth = (_strokeWidth3 = (_this10 = saved) === null || _this10 === void 0 ? void 0 : _this10.strokeWidth) !== null && _strokeWidth3 !== void 0 ? _strokeWidth3 : objVp.strokeWidth;
+                var _fillColor1;
+                objVp.fillColor = (_fillColor1 = (_this11 = saved) === null || _this11 === void 0 ? void 0 : _this11.fillColor) !== null && _fillColor1 !== void 0 ? _fillColor1 : objVp.fillColor;
+                var _fillOpacity1;
+                objVp.fillOpacity = (_fillOpacity1 = (_this12 = saved) === null || _this12 === void 0 ? void 0 : _this12.fillOpacity) !== null && _fillOpacity1 !== void 0 ? _fillOpacity1 : objVp.fillOpacity;
+                objVp.highlight = false;
+                var _size3;
+                objVp.size = (_size3 = (_this13 = saved) === null || _this13 === void 0 ? void 0 : _this13.size) !== null && _size3 !== void 0 ? _size3 : objVp.size;
+            }
+            (_obj_update = obj.update) === null || _obj_update === void 0 ? void 0 : _obj_update.call(obj);
+        }
+    }
+    setTempHighlight(obj, on) {
+        if (this.selected.has(obj)) return;
+        if (typeof obj.setProperty === 'function') {
+            obj.setProperty(on ? {
+                highlight: true
+            } : {
+                highlight: false
+            });
+        } else if (obj.visProp) {
+            var _obj_update;
+            obj.visProp.highlight = !!on;
+            (_obj_update = obj.update) === null || _obj_update === void 0 ? void 0 : _obj_update.call(obj);
+        }
+    }
+    // -----------------------
+    // Marquee helpers
+    // -----------------------
+    createMarquee(start) {
+        const data = {
+            x1: start.x,
+            y1: start.y,
+            x2: start.x,
+            y2: start.y
+        };
+        this._marqueeData = data;
+        // Create 4 corner points for the rectangle
+        const p1 = this.board.create('point', [
+            ()=>data.x1,
+            ()=>data.y1
+        ], {
+            visible: false,
+            fixed: true,
+            withLabel: false
+        });
+        try {
+            this.selectionHelperIds.add(p1.id);
+        } catch (e) {}
+        const p2 = this.board.create('point', [
+            ()=>data.x2,
+            ()=>data.y1
+        ], {
+            visible: false,
+            fixed: true,
+            withLabel: false
+        });
+        try {
+            this.selectionHelperIds.add(p2.id);
+        } catch (e) {}
+        const p3 = this.board.create('point', [
+            ()=>data.x2,
+            ()=>data.y2
+        ], {
+            visible: false,
+            fixed: true,
+            withLabel: false
+        });
+        try {
+            this.selectionHelperIds.add(p3.id);
+        } catch (e) {}
+        const p4 = this.board.create('point', [
+            ()=>data.x1,
+            ()=>data.y2
+        ], {
+            visible: false,
+            fixed: true,
+            withLabel: false
+        });
+        try {
+            this.selectionHelperIds.add(p4.id);
+        } catch (e) {}
+        // Create polygon from the 4 points - GeoGebra style (purple/blue with low opacity)
+        this.marqueeCurve = this.board.create('polygon', [
+            p1,
+            p2,
+            p3,
+            p4
+        ], {
+            strokeColor: '#7c3aed',
+            strokeWidth: 2,
+            dash: 1,
+            fillColor: '#c4b5fd',
+            fillOpacity: 0.2,
+            highlight: false,
+            fixed: true,
+            layer: 100,
+            borders: {
+                strokeColor: '#7c3aed',
+                strokeWidth: 2,
+                dash: 1
+            }
+        });
+        try {
+            this.selectionHelperIds.add(this.marqueeCurve.id);
+        } catch (e) {}
+        // Store the corner points for cleanup
+        this.marqueeCurve._marqueePoints = [
+            p1,
+            p2,
+            p3,
+            p4
+        ];
+        try {
+            this.marqueeCurve._noHighlight = true;
+            const vp = this.marqueeCurve.visProp || (this.marqueeCurve.visProp = {});
+            vp.pointerEvents = 'none';
+            const node = this.marqueeCurve.rendNode;
+            if (node) {
+                node.style.pointerEvents = 'none';
+            }
+        } catch (e) {}
+        try {
+            this.board.containerObj.style.cursor = 'crosshair';
+        } catch (e) {}
+        this.board.update();
+    }
+    updateMarquee(e) {
+        if (!this.marqueeCurve || !this.dragStartWorld) return;
+        const p = this.toWorld(e);
+        const d = this._marqueeData;
+        if (!d) return;
+        d.x2 = p.x;
+        d.y2 = p.y;
+        this.board.update();
+    }
+    destroyMarquee() {
+        if (this.marqueeCurve) {
+            try {
+                // Remove the corner points first
+                const points = this.marqueeCurve._marqueePoints;
+                if (points && Array.isArray(points)) {
+                    points.forEach((pt)=>{
+                        try {
+                            this.board.removeObject(pt);
+                        } catch (e) {}
+                    });
+                }
+                // Then remove the polygon
+                this.board.removeObject(this.marqueeCurve);
+            } catch (e) {}
+            this.marqueeCurve = null;
+        }
+        ;
+        this._marqueeData = null;
+        // Restore pointer
+        try {
+            this.board.containerObj.style.cursor = 'default';
+        } catch (e) {}
+    }
+    objectsInMarquee() {
+        // Get box data from the Tool class instance, not the polygon
+        const d = this._marqueeData;
+        if (!this.marqueeCurve || !d) return [];
+        const minx = Math.min(d.x1, d.x2), maxx = Math.max(d.x1, d.x2);
+        const miny = Math.min(d.y1, d.y2), maxy = Math.max(d.y1, d.y2);
+        const objs = Object.values(this.board.objects);
+        const inside = [];
+        for (const o of objs){
+            if (!this.isSelectableObject(o)) continue;
+            if (o.elType === 'point') {
+                const x = o.X(), y = o.Y();
+                if (x >= minx && x <= maxx && y >= miny && y <= maxy) inside.push(o);
+            } else if (o.elType === 'segment' || o.elType === 'line' || o.elType === 'circle' || o.elType === 'polygon') {
+                const bb = o.bounds && o.bounds();
+                if (bb) {
+                    const [lx, ux, ly, uy] = bb;
+                    if (ux >= minx && lx <= maxx && uy >= miny && ly <= maxy) inside.push(o);
+                } else {
+                    inside.push(o);
+                }
+            }
+        }
+        return this.sortByPreference(inside);
+    }
+    // -----------------------
+    // Utilities
+    // -----------------------
+    getUnderMouse(e) {
+        const arr = this.board.getAllObjectsUnderMouse(e);
+        return this.sortByPreference(arr.filter((o)=>this.isSelectableObject(o)));
+    }
+    sortByPreference(arr) {
+        const rank = (o)=>{
+            var _o_visProp;
+            if (o.elType === 'point' && !((_o_visProp = o.visProp) === null || _o_visProp === void 0 ? void 0 : _o_visProp.fixed)) return 0;
+            if (o.elType === 'segment') return 1;
+            if (o.elType === 'line') return 2;
+            if (o.elType === 'circle') return 3;
+            return 4;
+        };
+        return [
+            ...arr
+        ].sort((a, b)=>rank(a) - rank(b));
+    }
+    toWorld(e) {
+        // Preferred: use JSXGraph's helper with event
+        if (typeof this.board.getUsrCoordsOfMouse === 'function') {
+            var _e_ev;
+            const coords = this.board.getUsrCoordsOfMouse((_e_ev = e === null || e === void 0 ? void 0 : e.ev) !== null && _e_ev !== void 0 ? _e_ev : e);
+            var _coords_, _coords_1;
+            return {
+                x: (_coords_ = coords[0]) !== null && _coords_ !== void 0 ? _coords_ : 0,
+                y: (_coords_1 = coords[1]) !== null && _coords_1 !== void 0 ? _coords_1 : 0
+            };
+        }
+        // Fallback: canvasToXS/YS with clientX/clientY
+        if (typeof this.board.canvasToXS === 'function' && typeof this.board.canvasToYS === 'function') {
+            var _e_ev1;
+            const c = this.board.getCoordsTopLeftCorner((_e_ev1 = e === null || e === void 0 ? void 0 : e.ev) !== null && _e_ev1 !== void 0 ? _e_ev1 : e);
+            var _e_ev2;
+            const ev = (_e_ev2 = e === null || e === void 0 ? void 0 : e.ev) !== null && _e_ev2 !== void 0 ? _e_ev2 : e;
+            const absX = (ev === null || ev === void 0 ? void 0 : ev.clientX) - c[0];
+            const absY = (ev === null || ev === void 0 ? void 0 : ev.clientY) - c[1];
+            return {
+                x: this.board.canvasToXS(absX),
+                y: this.board.canvasToYS(absY)
+            };
+        }
+        return {
+            x: 0,
+            y: 0
+        };
+    }
+    constructor(board, onFeedback, undoRedo){
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "board", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "onFeedback", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "undoRedo", void 0);
+        // Handlers
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "onDown", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "onMove", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "onUp", void 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "onKey", void 0);
+        // Hover & click-cycle
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "hoverObj", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "cycleCandidates", []);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "cycleIndex", 0);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "lastClickWorld", {
+            x: 0,
+            y: 0
+        });
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "lastClickWasCycle", false);
+        // Selection
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "selected", new Set());
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "savedStyle", new Map());
+        // Marquee
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dragging", false);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dragStartWorld", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "marqueeCurve", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "selectionHelperIds", new Set());
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "isGroupDragging", false);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dragStartPointer", null);
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dragStartObjPositions", new Map());
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "dragTargetObj", null);
+        // -----------------------
+        // Core interaction
+        // -----------------------
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "handleMove", (e)=>{
+            // When dragging marquee, always block native behavior
+            if (this.dragging) {
+                if (e === null || e === void 0 ? void 0 : e.ev) {
+                    var _e_ev_preventDefault, _e_ev, _e_ev_stopPropagation, _e_ev1;
+                    (_e_ev_preventDefault = (_e_ev = e.ev).preventDefault) === null || _e_ev_preventDefault === void 0 ? void 0 : _e_ev_preventDefault.call(_e_ev);
+                    (_e_ev_stopPropagation = (_e_ev1 = e.ev).stopPropagation) === null || _e_ev_stopPropagation === void 0 ? void 0 : _e_ev_stopPropagation.call(_e_ev1);
+                }
+                this.updateMarquee(e);
+                return;
+            }
+            // Group dragging block
+            if (this.isGroupDragging && this.dragStartPointer) {
+                if (e === null || e === void 0 ? void 0 : e.ev) {
+                    var _e_ev_preventDefault1, _e_ev2, _e_ev_stopPropagation1, _e_ev3;
+                    (_e_ev_preventDefault1 = (_e_ev2 = e.ev).preventDefault) === null || _e_ev_preventDefault1 === void 0 ? void 0 : _e_ev_preventDefault1.call(_e_ev2);
+                    (_e_ev_stopPropagation1 = (_e_ev3 = e.ev).stopPropagation) === null || _e_ev_stopPropagation1 === void 0 ? void 0 : _e_ev_stopPropagation1.call(_e_ev3);
+                }
+                const pointer = this.toWorld(e);
+                const dx = pointer.x - this.dragStartPointer.x;
+                const dy = pointer.y - this.dragStartPointer.y;
+                for (const obj of this.selected){
+                    var _obj_visProp;
+                    if ((_obj_visProp = obj.visProp) === null || _obj_visProp === void 0 ? void 0 : _obj_visProp.fixed) continue;
+                    const start = this.dragStartObjPositions.get(obj);
+                    switch(obj.elType){
+                        case 'point':
+                            if (start) obj.moveTo([
+                                start.x + dx,
+                                start.y + dy
+                            ]);
+                            break;
+                        case 'line':
+                        case 'segment':
+                            if (start && obj.points && obj.points.length === start.length) {
+                                obj.points.forEach((pt, idx)=>{
+                                    pt.moveTo([
+                                        start[idx].x + dx,
+                                        start[idx].y + dy
+                                    ]);
+                                });
+                            }
+                            break;
+                        case 'circle':
+                            var _obj_center;
+                            if (start && ((_obj_center = obj.center) === null || _obj_center === void 0 ? void 0 : _obj_center.moveTo)) {
+                                obj.center.moveTo([
+                                    start.center.x + dx,
+                                    start.center.y + dy
+                                ]);
+                            }
+                            break;
+                        case 'polygon':
+                            if (start && obj.vertices && obj.vertices.length === start.length) {
+                                obj.vertices.forEach((pt, idx)=>{
+                                    pt.moveTo([
+                                        start[idx].x + dx,
+                                        start[idx].y + dy
+                                    ]);
+                                });
+                            }
+                            break;
+                        default:
+                            if (start && obj.moveTo) obj.moveTo([
+                                start.x + dx,
+                                start.y + dy
+                            ]);
+                    }
+                }
+                this.board.update();
+                return;
+            }
+            // Hover highlight
+            const under = this.getUnderMouse(e);
+            const top = under[0] || null;
+            this.setHover(top);
+        });
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "handleDown", (e)=>{
+            // 🚫 stop native selection right away
+            if (e === null || e === void 0 ? void 0 : e.ev) {
+                var _e_ev_preventDefault, _e_ev, _e_ev_stopPropagation, _e_ev1;
+                (_e_ev_preventDefault = (_e_ev = e.ev).preventDefault) === null || _e_ev_preventDefault === void 0 ? void 0 : _e_ev_preventDefault.call(_e_ev);
+                (_e_ev_stopPropagation = (_e_ev1 = e.ev).stopPropagation) === null || _e_ev_stopPropagation === void 0 ? void 0 : _e_ev_stopPropagation.call(_e_ev1);
+            }
+            const under = this.getUnderMouse(e);
+            const world = this.toWorld(e);
+            // --- check for marquee init as before ---
+            if (under.length) {
+                var _top_visProp, _e_ev2, _e_ev3, _e_ev4;
+                // Drag start on a selected object: prep group drag
+                const top = under[0];
+                if (this.selected.has(top) && !((_top_visProp = top.visProp) === null || _top_visProp === void 0 ? void 0 : _top_visProp.fixed)) {
+                    this.isGroupDragging = true;
+                    this.dragStartPointer = {
+                        ...world
+                    };
+                    this.dragTargetObj = top;
+                    // Record each selected's initial world position(s)
+                    this.dragStartObjPositions.clear();
+                    // Collect all point IDs that will be moved, so we can clear their pending moves
+                    const pointIdsToClear = [];
+                    for (const obj of this.selected){
+                        switch(obj.elType){
+                            case 'point':
+                                this.dragStartObjPositions.set(obj, {
+                                    x: obj.X(),
+                                    y: obj.Y()
+                                });
+                                if (obj.id) pointIdsToClear.push(obj.id);
+                                break;
+                            case 'line':
+                            case 'segment':
+                                // PATCH: Only if points exists and is array
+                                if (Array.isArray(obj.points)) {
+                                    this.dragStartObjPositions.set(obj, obj.points.map((pt)=>{
+                                        if (pt && pt.id) pointIdsToClear.push(pt.id);
+                                        return {
+                                            x: pt.X(),
+                                            y: pt.Y()
+                                        };
+                                    }));
+                                }
+                                break;
+                            case 'circle':
+                                {
+                                    var _points;
+                                    const onPt = obj.point2 || ((_points = obj.points) === null || _points === void 0 ? void 0 : _points[1]);
+                                    const centerPos = {
+                                        x: obj.center.X(),
+                                        y: obj.center.Y()
+                                    };
+                                    const radiusPtPos = onPt && typeof onPt.X === 'function' && typeof onPt.Y === 'function' ? {
+                                        x: onPt.X(),
+                                        y: onPt.Y()
+                                    } : null;
+                                    if (obj.center && obj.center.id) pointIdsToClear.push(obj.center.id);
+                                    if (onPt && onPt.id) pointIdsToClear.push(onPt.id);
+                                    this.dragStartObjPositions.set(obj, {
+                                        center: centerPos,
+                                        radiusPoint: radiusPtPos,
+                                        radius: typeof obj.R === 'function' ? obj.R() : radiusPtPos ? Math.hypot(radiusPtPos.x - centerPos.x, radiusPtPos.y - centerPos.y) : undefined
+                                    });
+                                }
+                                break;
+                            case 'polygon':
+                                this.dragStartObjPositions.set(obj, obj.vertices.map((pt)=>{
+                                    if (pt && pt.id) pointIdsToClear.push(pt.id);
+                                    return {
+                                        x: pt.X(),
+                                        y: pt.Y()
+                                    };
+                                }));
+                                break;
+                            default:
+                                // Fallback: try to record all .X(), .Y() if any
+                                if (obj.X && obj.Y) {
+                                    this.dragStartObjPositions.set(obj, {
+                                        x: obj.X(),
+                                        y: obj.Y()
+                                    });
+                                    if (obj.id) pointIdsToClear.push(obj.id);
+                                }
+                        }
+                    }
+                    // Mark all points as being group-dragged and clear their pending moves
+                    // This prevents individual point tracking from creating separate undo operations
+                    if (this.undoRedo && pointIdsToClear.length > 0) {
+                        this.undoRedo.markPointsForGroupDrag(pointIdsToClear);
+                        this.undoRedo.setSuppressShapeTracking(true);
+                    }
+                    // PREVENT DEFAULT: don't allow picked object's drag
+                    if (e === null || e === void 0 ? void 0 : e.ev) {
+                        var _e_ev_preventDefault1, _e_ev5, _e_ev_stopPropagation1, _e_ev6;
+                        (_e_ev_preventDefault1 = (_e_ev5 = e.ev).preventDefault) === null || _e_ev_preventDefault1 === void 0 ? void 0 : _e_ev_preventDefault1.call(_e_ev5);
+                        (_e_ev_stopPropagation1 = (_e_ev6 = e.ev).stopPropagation) === null || _e_ev_stopPropagation1 === void 0 ? void 0 : _e_ev_stopPropagation1.call(_e_ev6);
+                    }
+                    return;
+                }
+                // ... normal select/cycle/additive ...
+                const sameSpot = dist2(world, this.lastClickWorld) < 1e-6;
+                if (!sameSpot) {
+                    this.cycleCandidates = this.sortByPreference(under);
+                    this.cycleIndex = 0;
+                }
+                var _this_cycleCandidates_this_cycleIndex;
+                const candidate = (_this_cycleCandidates_this_cycleIndex = this.cycleCandidates[this.cycleIndex]) !== null && _this_cycleCandidates_this_cycleIndex !== void 0 ? _this_cycleCandidates_this_cycleIndex : this.sortByPreference(under)[0];
+                const additive = (e === null || e === void 0 ? void 0 : (_e_ev2 = e.ev) === null || _e_ev2 === void 0 ? void 0 : _e_ev2.shiftKey) || (e === null || e === void 0 ? void 0 : (_e_ev3 = e.ev) === null || _e_ev3 === void 0 ? void 0 : _e_ev3.metaKey) || (e === null || e === void 0 ? void 0 : (_e_ev4 = e.ev) === null || _e_ev4 === void 0 ? void 0 : _e_ev4.ctrlKey);
+                if (additive) {
+                    this.toggleSelect(candidate);
+                } else {
+                    if (sameSpot) {
+                        this.cycleIndex = (this.cycleIndex + 1) % this.cycleCandidates.length;
+                    }
+                    const chosen = sameSpot ? this.cycleCandidates[this.cycleIndex] : candidate;
+                    this.replaceSelectionWith(chosen);
+                }
+                this.lastClickWorld = world;
+                this.lastClickWasCycle = true;
+                this.board.update();
+                return;
+            } else {
+                // If blank space and not already dragging marquee, clear selection
+                if (!this.dragging && !this.isGroupDragging) {
+                    this.clearSelection();
+                    this.board.update(); // ensure immediate deselect
+                }
+                // Empty space -> start marquee
+                this.lastClickWasCycle = false;
+                this.dragging = true;
+                this.dragStartWorld = world;
+                this.createMarquee(world);
+                // extra safety for Safari holding click-and-drag
+                if (e === null || e === void 0 ? void 0 : e.ev) {
+                    var _e_ev_preventDefault2, _e_ev7, _e_ev_stopPropagation2, _e_ev8;
+                    (_e_ev_preventDefault2 = (_e_ev7 = e.ev).preventDefault) === null || _e_ev_preventDefault2 === void 0 ? void 0 : _e_ev_preventDefault2.call(_e_ev7);
+                    (_e_ev_stopPropagation2 = (_e_ev8 = e.ev).stopPropagation) === null || _e_ev_stopPropagation2 === void 0 ? void 0 : _e_ev_stopPropagation2.call(_e_ev8);
+                }
+            }
+        });
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "handleUp", (e)=>{
+            // End group drag if active
+            if (this.isGroupDragging) {
+                // Collect all moved points and create undo operation
+                if (this.undoRedo && this.dragStartObjPositions.size > 0) {
+                    const movedPoints = new Map();
+                    // Collect all points that were moved
+                    for (const obj of this.selected){
+                        var _obj_visProp;
+                        if ((_obj_visProp = obj.visProp) === null || _obj_visProp === void 0 ? void 0 : _obj_visProp.fixed) continue;
+                        const startPos = this.dragStartObjPositions.get(obj);
+                        if (!startPos) continue;
+                        const posOf = (pt)=>{
+                            var _getName, _this;
+                            return {
+                                x: pt.X(),
+                                y: pt.Y(),
+                                name: pt._rawName || ((_getName = (_this = pt).getName) === null || _getName === void 0 ? void 0 : _getName.call(_this)) || ''
+                            };
+                        };
+                        switch(obj.elType){
+                            case 'point':
+                                {
+                                    const before = {
+                                        x: startPos.x,
+                                        y: startPos.y,
+                                        name: posOf(obj).name
+                                    };
+                                    const after = posOf(obj);
+                                    // Only record if actually moved
+                                    if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                                        movedPoints.set(obj.id, {
+                                            before,
+                                            after
+                                        });
+                                    }
+                                }
+                                break;
+                            case 'line':
+                            case 'segment':
+                                if (Array.isArray(obj.points) && Array.isArray(startPos)) {
+                                    obj.points.forEach((pt, idx)=>{
+                                        if (!pt || !pt.id) return;
+                                        const before = {
+                                            x: startPos[idx].x,
+                                            y: startPos[idx].y,
+                                            name: posOf(pt).name
+                                        };
+                                        const after = posOf(pt);
+                                        if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                                            movedPoints.set(pt.id, {
+                                                before,
+                                                after
+                                            });
+                                        }
+                                    });
+                                }
+                                break;
+                            case 'circle':
+                                {
+                                    var _points;
+                                    const center = obj.center;
+                                    if (center && center.id && startPos.center) {
+                                        const before = {
+                                            x: startPos.center.x,
+                                            y: startPos.center.y,
+                                            name: posOf(center).name
+                                        };
+                                        const after = posOf(center);
+                                        if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                                            movedPoints.set(center.id, {
+                                                before,
+                                                after
+                                            });
+                                        }
+                                    }
+                                    // Also check radius point if it exists
+                                    const radiusPt = obj.point2 || ((_points = obj.points) === null || _points === void 0 ? void 0 : _points[1]);
+                                    if (radiusPt && radiusPt.id && startPos.radiusPoint) {
+                                        const before = {
+                                            x: startPos.radiusPoint.x,
+                                            y: startPos.radiusPoint.y,
+                                            name: posOf(radiusPt).name
+                                        };
+                                        const after = posOf(radiusPt);
+                                        if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                                            movedPoints.set(radiusPt.id, {
+                                                before,
+                                                after
+                                            });
+                                        }
+                                    }
+                                }
+                                break;
+                            case 'polygon':
+                                if (Array.isArray(obj.vertices) && Array.isArray(startPos)) {
+                                    obj.vertices.forEach((pt, idx)=>{
+                                        if (!pt || !pt.id) return;
+                                        const before = {
+                                            x: startPos[idx].x,
+                                            y: startPos[idx].y,
+                                            name: posOf(pt).name
+                                        };
+                                        const after = posOf(pt);
+                                        if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                                            movedPoints.set(pt.id, {
+                                                before,
+                                                after
+                                            });
+                                        }
+                                    });
+                                }
+                                break;
+                            default:
+                                if (obj.X && obj.Y && obj.id && startPos.x !== undefined && startPos.y !== undefined) {
+                                    const before = {
+                                        x: startPos.x,
+                                        y: startPos.y,
+                                        name: posOf(obj).name
+                                    };
+                                    const after = posOf(obj);
+                                    if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                                        movedPoints.set(obj.id, {
+                                            before,
+                                            after
+                                        });
+                                    }
+                                }
+                        }
+                    }
+                    // Create bundle operation if there are multiple moves, or single operation if only one
+                    // Suppress tracking during this operation to prevent duplicate entries
+                    if (movedPoints.size > 0 && this.undoRedo) {
+                        const undoRedo = this.undoRedo; // Store in local variable for closure
+                        const pointIdsMoved = Array.from(movedPoints.keys());
+                        // Unmark points from group drag tracking before creating the operation
+                        undoRedo.unmarkPointsForGroupDrag(pointIdsMoved);
+                        undoRedo.suppressTrackingDuring(()=>{
+                            const ops = [];
+                            movedPoints.forEach((param, pointId)=>{
+                                let { before, after } = param;
+                                ops.push({
+                                    kind: 'modify',
+                                    pointId,
+                                    before,
+                                    after
+                                });
+                            });
+                            if (ops.length === 1 && ops[0]) {
+                                undoRedo.pushOperation(ops[0]);
+                            } else if (ops.length > 1) {
+                                undoRedo.pushOperation({
+                                    kind: 'bundle',
+                                    ops
+                                });
+                            }
+                        });
+                    } else if (this.undoRedo) {
+                        // Even if no points moved, unmark them to clean up
+                        const pointIdsToUnmark = [];
+                        for (const obj of this.selected){
+                            var _obj_visProp1;
+                            if ((_obj_visProp1 = obj.visProp) === null || _obj_visProp1 === void 0 ? void 0 : _obj_visProp1.fixed) continue;
+                            const collectPointIds = (pts)=>{
+                                if (Array.isArray(pts)) {
+                                    pts.forEach((pt)=>{
+                                        if (pt && pt.id) pointIdsToUnmark.push(pt.id);
+                                    });
+                                }
+                            };
+                            switch(obj.elType){
+                                case 'point':
+                                    if (obj.id) pointIdsToUnmark.push(obj.id);
+                                    break;
+                                case 'line':
+                                case 'segment':
+                                    collectPointIds(obj.points);
+                                    break;
+                                case 'circle':
+                                    var _points1;
+                                    if (obj.center && obj.center.id) pointIdsToUnmark.push(obj.center.id);
+                                    const onPt = obj.point2 || ((_points1 = obj.points) === null || _points1 === void 0 ? void 0 : _points1[1]);
+                                    if (onPt && onPt.id) pointIdsToUnmark.push(onPt.id);
+                                    break;
+                                case 'polygon':
+                                    collectPointIds(obj.vertices);
+                                    break;
+                            }
+                        }
+                        if (pointIdsToUnmark.length > 0) {
+                            this.undoRedo.unmarkPointsForGroupDrag(pointIdsToUnmark);
+                        }
+                    }
+                }
+                // Always turn off shape tracking suppression when ending group drag
+                if (this.undoRedo) {
+                    this.undoRedo.setSuppressShapeTracking(false);
+                }
+                this.isGroupDragging = false;
+                this.dragTargetObj = null;
+                this.dragStartPointer = null;
+                this.dragStartObjPositions.clear();
+                return;
+            }
+            if (!this.dragging) {
+                var _e_ev, _e_ev1, _e_ev2;
+                // If we released without dragging and didn't cycle-select anything, clear selection
+                if (!this.lastClickWasCycle && !((e === null || e === void 0 ? void 0 : (_e_ev = e.ev) === null || _e_ev === void 0 ? void 0 : _e_ev.shiftKey) || (e === null || e === void 0 ? void 0 : (_e_ev1 = e.ev) === null || _e_ev1 === void 0 ? void 0 : _e_ev1.metaKey) || (e === null || e === void 0 ? void 0 : (_e_ev2 = e.ev) === null || _e_ev2 === void 0 ? void 0 : _e_ev2.ctrlKey))) {
+                    var // Selection was already cleared in handleDown for empty space
+                    _this_onFeedback, _this;
+                    (_this_onFeedback = (_this = this).onFeedback) === null || _this_onFeedback === void 0 ? void 0 : _this_onFeedback.call(_this, '');
+                }
+                return;
+            }
+            this.dragging = false;
+            const chosen = this.objectsInMarquee();
+            this.destroyMarquee();
+            if (chosen.length) {
+                var _e_ev3, _e_ev4, _e_ev5, _this_onFeedback1, _this1;
+                const additive = (e === null || e === void 0 ? void 0 : (_e_ev3 = e.ev) === null || _e_ev3 === void 0 ? void 0 : _e_ev3.shiftKey) || (e === null || e === void 0 ? void 0 : (_e_ev4 = e.ev) === null || _e_ev4 === void 0 ? void 0 : _e_ev4.metaKey) || (e === null || e === void 0 ? void 0 : (_e_ev5 = e.ev) === null || _e_ev5 === void 0 ? void 0 : _e_ev5.ctrlKey);
+                if (!additive) this.clearSelection();
+                chosen.forEach((o)=>this.addToSelection(o));
+                (_this_onFeedback1 = (_this1 = this).onFeedback) === null || _this_onFeedback1 === void 0 ? void 0 : _this_onFeedback1.call(_this1, "".concat(this.selected.size, " objekt(y) vybrány"));
+            } else {
+                var _this_onFeedback2, _this2;
+                // No objects in marquee - clear selection
+                this.clearSelection();
+                (_this_onFeedback2 = (_this2 = this).onFeedback) === null || _this_onFeedback2 === void 0 ? void 0 : _this_onFeedback2.call(_this2, '');
+            }
+            this.board.update();
+        });
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "handleKey", (e)=>{
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+                if (!this.selected.size) return;
+                Array.from(this.selected).forEach((o)=>{
+                    try {
+                        var _o_remove;
+                        (_o_remove = o.remove) === null || _o_remove === void 0 ? void 0 : _o_remove.call(o);
+                    } catch (e) {}
+                });
+                this.selected.clear();
+                this.board.update();
+                e.preventDefault();
+            }
+        });
+        this.board = board;
+        this.onFeedback = onFeedback;
+        this.undoRedo = undoRedo;
+    }
+}
+;
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
 "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
 
@@ -5369,11 +6506,15 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$board$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/board-manager.ts [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$geometry$2d$factory$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/geometry-factory.ts [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$selection$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/selection-manager.ts [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$rename$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/rename-manager.ts [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$select$2d$objects$2d$tool$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/select-objects-tool.ts [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/measurement-scale.ts [app-client] (ecmascript)");
 ;
 var _s = __turbopack_context__.k.signature();
 ;
 'use client';
+;
+;
 ;
 ;
 ;
@@ -6259,6 +7400,46 @@ function QuestionBasedTester(param) {
                 onFeedback: setFeedback,
                 EPS
             });
+            // Create rename manager and wire into undo/redo
+            const renameMgr = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$rename$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["RenameManager"](brd, {
+                clickEps: 0.12,
+                promptLabel: 'Název bodu (např. A, B, C, A_1, A_2):',
+                eventGuard: {
+                    "QuestionBasedTester.useEffect": (ev)=>{
+                        var _ev_originalEvent, _t_classList;
+                        const t = ev === null || ev === void 0 ? void 0 : (_ev_originalEvent = ev.originalEvent) === null || _ev_originalEvent === void 0 ? void 0 : _ev_originalEvent.target;
+                        if (t && (t.closest('.group') || ((_t_classList = t.classList) === null || _t_classList === void 0 ? void 0 : _t_classList.contains('group')))) return false;
+                        return !uiBusyRef.current;
+                    }
+                }["QuestionBasedTester.useEffect"],
+                onRenamed: {
+                    "QuestionBasedTester.useEffect": (param)=>{
+                        let { pointId, beforeRaw, afterRaw } = param;
+                        var _undoRedoRef_current;
+                        if (beforeRaw === afterRaw) return;
+                        const pt = brd.objects[pointId];
+                        if (!pt) return;
+                        const before = {
+                            x: pt.X(),
+                            y: pt.Y(),
+                            name: beforeRaw
+                        };
+                        const after = {
+                            x: pt.X(),
+                            y: pt.Y(),
+                            name: afterRaw
+                        };
+                        const op = (_undoRedoRef_current = undoRedoRef.current) === null || _undoRedoRef_current === void 0 ? void 0 : _undoRedoRef_current.createModifyOperation(pointId, before, after);
+                        if (op) {
+                            undoRedoRef.current.pushOperation(op);
+                            updateUndoRedoState();
+                        }
+                    }
+                }["QuestionBasedTester.useEffect"]
+            });
+            renameMgrRef.current = renameMgr;
+            // Create SelectObjectsTool
+            selectToolRef.current = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$select$2d$objects$2d$tool$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"](brd, setFeedback, undoRedoRef.current);
             // Track point moves as modify operations
             function attachModifyListeners(el) {
                 var _el_visProp;
@@ -6304,12 +7485,16 @@ function QuestionBasedTester(param) {
                     attachModifyListeners(o);
                 }
             }["QuestionBasedTester.useEffect"]);
-            const downHandler = {
-                "QuestionBasedTester.useEffect.downHandler": (e)=>{
-                    if (handleClickRef.current) handleClickRef.current(brd, e);
+            // Always forward board 'down' events to drawing handler
+            const boardDownHandler = {
+                "QuestionBasedTester.useEffect.boardDownHandler": (e)=>{
+                    var _handleClickRef_current;
+                    // Do not trigger drawing handler when select tool is active
+                    if (toolRef.current === 'select') return;
+                    (_handleClickRef_current = handleClickRef.current) === null || _handleClickRef_current === void 0 ? void 0 : _handleClickRef_current.call(handleClickRef, brd, e);
                 }
-            }["QuestionBasedTester.useEffect.downHandler"];
-            brd.on('down', downHandler);
+            }["QuestionBasedTester.useEffect.boardDownHandler"];
+            brd.on('down', boardDownHandler);
             // Make sure the SVG sizes correctly once visible
             setTimeout({
                 "QuestionBasedTester.useEffect": ()=>{
@@ -6323,11 +7508,19 @@ function QuestionBasedTester(param) {
             return ({
                 "QuestionBasedTester.useEffect": ()=>{
                     try {
-                        brd.off('down', downHandler);
+                        brd.off('down', boardDownHandler);
                     } catch (e) {}
                     undoRedoRef.current = null;
                     geometryFactoryRef.current = null;
                     selectionManagerRef.current = null;
+                    try {
+                        var _renameMgrRef_current;
+                        (_renameMgrRef_current = renameMgrRef.current) === null || _renameMgrRef_current === void 0 ? void 0 : _renameMgrRef_current.destroy();
+                    } catch (e) {}
+                    renameMgrRef.current = null;
+                    // On component cleanup/unmount, only use deactivate on selectToolRef
+                    if (selectToolRef.current) selectToolRef.current.deactivate();
+                    selectToolRef.current = null;
                     boardManager.free();
                     boardManagerRef.current = null;
                     givensRef.current = null;
@@ -6346,6 +7539,34 @@ function QuestionBasedTester(param) {
         }
     }["QuestionBasedTester.useEffect"], [
         gridOption
+    ]);
+    // Hook rename mode state to manager enable/disable
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "QuestionBasedTester.useEffect": ()=>{
+            if (!renameMgrRef.current) return;
+            if (renameMode) renameMgrRef.current.enable();
+            else renameMgrRef.current.disable();
+        }
+    }["QuestionBasedTester.useEffect"], [
+        renameMode
+    ]);
+    // Activate/deactivate select tool when tool changes
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "QuestionBasedTester.useEffect": ()=>{
+            var _boardManagerRef_current;
+            const brd = (_boardManagerRef_current = boardManagerRef.current) === null || _boardManagerRef_current === void 0 ? void 0 : _boardManagerRef_current.getBoard();
+            if (!brd) return;
+            if (!selectToolRef.current) {
+                selectToolRef.current = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$select$2d$objects$2d$tool$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"](brd, setFeedback, undoRedoRef.current || undefined);
+            }
+            if (tool === 'select') {
+                selectToolRef.current.activate();
+            } else {
+                selectToolRef.current.deactivate();
+            }
+        }
+    }["QuestionBasedTester.useEffect"], [
+        tool
     ]);
     // Create givens when question loads AND the board is ready
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
@@ -6747,7 +7968,7 @@ function QuestionBasedTester(param) {
                         className: "animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1024,
+                        lineNumber: 1080,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -6755,18 +7976,18 @@ function QuestionBasedTester(param) {
                         children: "Načítání úlohy..."
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1025,
+                        lineNumber: 1081,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 1023,
+                lineNumber: 1079,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 1022,
+            lineNumber: 1078,
             columnNumber: 7
         }, this);
     }
@@ -6780,7 +8001,7 @@ function QuestionBasedTester(param) {
                         className: "h-12 w-12 text-red-500 mx-auto mb-4"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1035,
+                        lineNumber: 1091,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -6788,7 +8009,7 @@ function QuestionBasedTester(param) {
                         children: error
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1036,
+                        lineNumber: 1092,
                         columnNumber: 11
                     }, this),
                     onBack && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -6797,18 +8018,18 @@ function QuestionBasedTester(param) {
                         children: "Zpět"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1038,
+                        lineNumber: 1094,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 1034,
+                lineNumber: 1090,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 1033,
+            lineNumber: 1089,
             columnNumber: 7
         }, this);
     }
@@ -6823,7 +8044,7 @@ function QuestionBasedTester(param) {
                         children: "Úloha nebyla nalezena"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1054,
+                        lineNumber: 1110,
                         columnNumber: 11
                     }, this),
                     onBack && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -6832,18 +8053,18 @@ function QuestionBasedTester(param) {
                         children: "Zpět"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1056,
+                        lineNumber: 1112,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 1053,
+                lineNumber: 1109,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 1052,
+            lineNumber: 1108,
             columnNumber: 7
         }, this);
     }
@@ -6869,14 +8090,14 @@ function QuestionBasedTester(param) {
                                                 size: 18
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1080,
+                                                lineNumber: 1136,
                                                 columnNumber: 19
                                             }, this),
                                             "Zpět"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1076,
+                                        lineNumber: 1132,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -6886,7 +8107,7 @@ function QuestionBasedTester(param) {
                                                 children: question.title
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1085,
+                                                lineNumber: 1141,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -6899,7 +8120,7 @@ function QuestionBasedTester(param) {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1089,
+                                                        lineNumber: 1145,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -6909,7 +8130,7 @@ function QuestionBasedTester(param) {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1090,
+                                                        lineNumber: 1146,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -6919,7 +8140,7 @@ function QuestionBasedTester(param) {
                                                                 size: 14
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1092,
+                                                                lineNumber: 1148,
                                                                 columnNumber: 21
                                                             }, this),
                                                             Math.floor(timeSpent / 60),
@@ -6928,25 +8149,25 @@ function QuestionBasedTester(param) {
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1091,
+                                                        lineNumber: 1147,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1088,
+                                                lineNumber: 1144,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1084,
+                                        lineNumber: 1140,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1074,
+                                lineNumber: 1130,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -6960,7 +8181,7 @@ function QuestionBasedTester(param) {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1099,
+                                        lineNumber: 1155,
                                         columnNumber: 15
                                     }, this),
                                     attempt && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -6973,19 +8194,19 @@ function QuestionBasedTester(param) {
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1101,
+                                        lineNumber: 1157,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1098,
+                                lineNumber: 1154,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1073,
+                        lineNumber: 1129,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7000,12 +8221,12 @@ function QuestionBasedTester(param) {
                                     children: (_question_prompt_md = question.prompt_md) !== null && _question_prompt_md !== void 0 ? _question_prompt_md : ''
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                    lineNumber: 1111,
+                                    lineNumber: 1167,
                                     columnNumber: 15
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1110,
+                                lineNumber: 1166,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7018,25 +8239,25 @@ function QuestionBasedTester(param) {
                                             size: 14
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                            lineNumber: 1120,
+                                            lineNumber: 1176,
                                             columnNumber: 17
                                         }, this),
                                         showHelp ? 'Skrýt nápovědu' : 'Zobrazit nápovědu'
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                    lineNumber: 1116,
+                                    lineNumber: 1172,
                                     columnNumber: 15
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1115,
+                                lineNumber: 1171,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1109,
+                        lineNumber: 1165,
                         columnNumber: 11
                     }, this),
                     showHelp && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7047,7 +8268,7 @@ function QuestionBasedTester(param) {
                                 children: "Nápověda k nástrojům:"
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1128,
+                                lineNumber: 1184,
                                 columnNumber: 15
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7060,7 +8281,7 @@ function QuestionBasedTester(param) {
                                                 children: "Základní nástroje:"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1131,
+                                                lineNumber: 1187,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("ul", {
@@ -7073,14 +8294,14 @@ function QuestionBasedTester(param) {
                                                                 children: "Myš:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1133,
+                                                                lineNumber: 1189,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Interakce s objekty bez vytváření"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1133,
+                                                        lineNumber: 1189,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7090,14 +8311,14 @@ function QuestionBasedTester(param) {
                                                                 children: "Bod:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1134,
+                                                                lineNumber: 1190,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Vytvoření bodu kliknutím"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1134,
+                                                        lineNumber: 1190,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7107,14 +8328,14 @@ function QuestionBasedTester(param) {
                                                                 children: "Úsečka:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1135,
+                                                                lineNumber: 1191,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Klikněte na dva body"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1135,
+                                                        lineNumber: 1191,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7124,14 +8345,14 @@ function QuestionBasedTester(param) {
                                                                 children: "Přímka:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1136,
+                                                                lineNumber: 1192,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Klikněte na dva body"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1136,
+                                                        lineNumber: 1192,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7141,14 +8362,31 @@ function QuestionBasedTester(param) {
                                                                 children: "Kružnice:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1137,
+                                                                lineNumber: 1193,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Střed a bod na kružnici"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1137,
+                                                        lineNumber: 1193,
+                                                        columnNumber: 21
+                                                    }, this),
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
+                                                        children: [
+                                                            "• ",
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
+                                                                children: "Vybrat objekty:"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                                lineNumber: 1194,
+                                                                columnNumber: 27
+                                                            }, this),
+                                                            " Výběr a přesun více objektů"
+                                                        ]
+                                                    }, void 0, true, {
+                                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                        lineNumber: 1194,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7158,26 +8396,26 @@ function QuestionBasedTester(param) {
                                                                 children: "Guma:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1138,
+                                                                lineNumber: 1195,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Smazání objektu"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1138,
+                                                        lineNumber: 1195,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1132,
+                                                lineNumber: 1188,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1130,
+                                        lineNumber: 1186,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7187,7 +8425,7 @@ function QuestionBasedTester(param) {
                                                 children: "Fyzické nástroje:"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1142,
+                                                lineNumber: 1199,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("ul", {
@@ -7200,14 +8438,14 @@ function QuestionBasedTester(param) {
                                                                 children: "Pravítko:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1144,
+                                                                lineNumber: 1201,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Měření vzdáleností"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1144,
+                                                        lineNumber: 1201,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7217,14 +8455,14 @@ function QuestionBasedTester(param) {
                                                                 children: "Trojúhelník:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1145,
+                                                                lineNumber: 1202,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Rýsování úhlů"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1145,
+                                                        lineNumber: 1202,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7234,14 +8472,14 @@ function QuestionBasedTester(param) {
                                                                 children: "Úhloměr:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1146,
+                                                                lineNumber: 1203,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Měření úhlů"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1146,
+                                                        lineNumber: 1203,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7251,14 +8489,14 @@ function QuestionBasedTester(param) {
                                                                 children: "Modrý bod:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1147,
+                                                                lineNumber: 1204,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Přesun nástroje"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1147,
+                                                        lineNumber: 1204,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7268,14 +8506,14 @@ function QuestionBasedTester(param) {
                                                                 children: "Zelený bod:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1148,
+                                                                lineNumber: 1205,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Otočení nástroje"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1148,
+                                                        lineNumber: 1205,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7285,32 +8523,32 @@ function QuestionBasedTester(param) {
                                                                 children: "Oranžový bod:"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1149,
+                                                                lineNumber: 1206,
                                                                 columnNumber: 27
                                                             }, this),
                                                             " Změna velikosti"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1149,
+                                                        lineNumber: 1206,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1143,
+                                                lineNumber: 1200,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1141,
+                                        lineNumber: 1198,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1129,
+                                lineNumber: 1185,
                                 columnNumber: 15
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7323,14 +8561,14 @@ function QuestionBasedTester(param) {
                                                 size: 16
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1155,
+                                                lineNumber: 1212,
                                                 columnNumber: 19
                                             }, this),
                                             "Klávesové zkratky:"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1154,
+                                        lineNumber: 1211,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("ul", {
@@ -7340,17 +8578,34 @@ function QuestionBasedTester(param) {
                                                 children: [
                                                     "• ",
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
+                                                        children: "N:"
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                        lineNumber: 1216,
+                                                        columnNumber: 25
+                                                    }, this),
+                                                    " Režim přejmenování bodů"
+                                                ]
+                                            }, void 0, true, {
+                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                lineNumber: 1216,
+                                                columnNumber: 19
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
+                                                children: [
+                                                    "• ",
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("strong", {
                                                         children: "Ctrl/Cmd + Z:"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1159,
+                                                        lineNumber: 1217,
                                                         columnNumber: 25
                                                     }, this),
                                                     " Zpět (Undo)"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1159,
+                                                lineNumber: 1217,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7360,14 +8615,14 @@ function QuestionBasedTester(param) {
                                                         children: "Ctrl/Cmd + Shift + Z:"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1160,
+                                                        lineNumber: 1218,
                                                         columnNumber: 25
                                                     }, this),
                                                     " Znovu (Redo)"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1160,
+                                                lineNumber: 1218,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -7377,32 +8632,32 @@ function QuestionBasedTester(param) {
                                                         children: "Delete:"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1161,
+                                                        lineNumber: 1219,
                                                         columnNumber: 25
                                                     }, this),
                                                     " Smazat vybraný objekt (když je aktivní guma)"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1161,
+                                                lineNumber: 1219,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1158,
+                                        lineNumber: 1215,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1153,
+                                lineNumber: 1210,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1127,
+                        lineNumber: 1183,
                         columnNumber: 13
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7419,7 +8674,7 @@ function QuestionBasedTester(param) {
                                                 children: "Kreslení"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1173,
+                                                lineNumber: 1231,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7441,27 +8696,27 @@ function QuestionBasedTester(param) {
                                                                 d: "M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1182,
+                                                                lineNumber: 1240,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                 d: "M13 13l6 6"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                lineNumber: 1183,
+                                                                lineNumber: 1241,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1181,
+                                                        lineNumber: 1239,
                                                         columnNumber: 19
                                                     }, this),
                                                     "Myš"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1174,
+                                                lineNumber: 1232,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7473,14 +8728,14 @@ function QuestionBasedTester(param) {
                                                         size: 18
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1194,
+                                                        lineNumber: 1252,
                                                         columnNumber: 19
                                                     }, this),
                                                     " Bod"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1187,
+                                                lineNumber: 1245,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7492,14 +8747,14 @@ function QuestionBasedTester(param) {
                                                         size: 18
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1203,
+                                                        lineNumber: 1261,
                                                         columnNumber: 19
                                                     }, this),
                                                     " Úsečka"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1196,
+                                                lineNumber: 1254,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7511,14 +8766,14 @@ function QuestionBasedTester(param) {
                                                         size: 18
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1212,
+                                                        lineNumber: 1270,
                                                         columnNumber: 19
                                                     }, this),
                                                     " Přímka"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1205,
+                                                lineNumber: 1263,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7530,20 +8785,20 @@ function QuestionBasedTester(param) {
                                                         size: 18
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1221,
+                                                        lineNumber: 1279,
                                                         columnNumber: 19
                                                     }, this),
                                                     " Kružnice"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1214,
+                                                lineNumber: 1272,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1172,
+                                        lineNumber: 1230,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7554,7 +8809,67 @@ function QuestionBasedTester(param) {
                                                 children: "Úpravy"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1227,
+                                                lineNumber: 1285,
+                                                columnNumber: 17
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                                onClick: ()=>setTool('select'),
+                                                className: "px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ".concat(tool === 'select' ? 'bg-purple-700 text-white shadow-md' : 'bg-white text-purple-700 hover:bg-purple-50 border border-purple-300'),
+                                                title: "Vybrat objekty",
+                                                children: [
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("svg", {
+                                                        width: "18",
+                                                        height: "18",
+                                                        viewBox: "0 0 24 24",
+                                                        fill: "none",
+                                                        stroke: "currentColor",
+                                                        strokeWidth: "2",
+                                                        strokeLinecap: "round",
+                                                        strokeLinejoin: "round",
+                                                        style: {
+                                                            marginRight: '2px'
+                                                        },
+                                                        children: [
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
+                                                                x: "4",
+                                                                y: "4",
+                                                                width: "12",
+                                                                height: "12",
+                                                                rx: "2",
+                                                                fill: "none",
+                                                                strokeDasharray: "3 2"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                                lineNumber: 1296,
+                                                                columnNumber: 21
+                                                            }, this),
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("polyline", {
+                                                                points: "11,13 15,13 15,17",
+                                                                strokeDasharray: "0"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                                lineNumber: 1297,
+                                                                columnNumber: 21
+                                                            }, this),
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("polyline", {
+                                                                points: "15,17 17,15 13,15",
+                                                                strokeDasharray: "0"
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                                lineNumber: 1298,
+                                                                columnNumber: 21
+                                                            }, this)
+                                                        ]
+                                                    }, void 0, true, {
+                                                        fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                        lineNumber: 1295,
+                                                        columnNumber: 19
+                                                    }, this),
+                                                    "Vybrat objekty"
+                                                ]
+                                            }, void 0, true, {
+                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                lineNumber: 1287,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7566,20 +8881,30 @@ function QuestionBasedTester(param) {
                                                         size: 18
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1235,
+                                                        lineNumber: 1309,
                                                         columnNumber: 19
                                                     }, this),
                                                     " Guma"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1228,
+                                                lineNumber: 1302,
+                                                columnNumber: 17
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                                onClick: ()=>setRenameEnabled(!renameMode),
+                                                className: "px-3 py-2 rounded flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ".concat(renameMode ? 'bg-teal-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-teal-50 border border-gray-300'),
+                                                title: "Přejmenovat bod (klikněte na bod)",
+                                                children: "✎ Název bodu"
+                                            }, void 0, false, {
+                                                fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
+                                                lineNumber: 1311,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1226,
+                                        lineNumber: 1284,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7590,7 +8915,7 @@ function QuestionBasedTester(param) {
                                                 children: "Nástroje"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1241,
+                                                lineNumber: 1324,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7602,14 +8927,14 @@ function QuestionBasedTester(param) {
                                                         size: 18
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1249,
+                                                        lineNumber: 1332,
                                                         columnNumber: 19
                                                     }, this),
                                                     " Pravítko"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1242,
+                                                lineNumber: 1325,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7621,14 +8946,14 @@ function QuestionBasedTester(param) {
                                                         size: 18
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1258,
+                                                        lineNumber: 1341,
                                                         columnNumber: 19
                                                     }, this),
                                                     " Trojúhelník"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1251,
+                                                lineNumber: 1334,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7640,26 +8965,26 @@ function QuestionBasedTester(param) {
                                                         size: 18
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1267,
+                                                        lineNumber: 1350,
                                                         columnNumber: 19
                                                     }, this),
                                                     " Úhloměr"
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1260,
+                                                lineNumber: 1343,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1240,
+                                        lineNumber: 1323,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1170,
+                                lineNumber: 1228,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7675,14 +9000,14 @@ function QuestionBasedTester(param) {
                                                 size: 16
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1280,
+                                                lineNumber: 1363,
                                                 columnNumber: 17
                                             }, this),
                                             " Zpět"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1274,
+                                        lineNumber: 1357,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7695,14 +9020,14 @@ function QuestionBasedTester(param) {
                                                 size: 16
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1288,
+                                                lineNumber: 1371,
                                                 columnNumber: 17
                                             }, this),
                                             " Znovu"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1282,
+                                        lineNumber: 1365,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7713,14 +9038,14 @@ function QuestionBasedTester(param) {
                                                 size: 16
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1291,
+                                                lineNumber: 1374,
                                                 columnNumber: 17
                                             }, this),
                                             " Vymazat"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1290,
+                                        lineNumber: 1373,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7731,26 +9056,26 @@ function QuestionBasedTester(param) {
                                                 size: 16
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1294,
+                                                lineNumber: 1377,
                                                 columnNumber: 17
                                             }, this),
                                             " Uložit"
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1293,
+                                        lineNumber: 1376,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1273,
+                                lineNumber: 1356,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1168,
+                        lineNumber: 1226,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7782,7 +9107,7 @@ function QuestionBasedTester(param) {
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1309,
+                                                lineNumber: 1392,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7796,18 +9121,18 @@ function QuestionBasedTester(param) {
                                                     size: 18
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                    lineNumber: 1322,
+                                                    lineNumber: 1405,
                                                     columnNumber: 19
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1316,
+                                                lineNumber: 1399,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1307,
+                                        lineNumber: 1390,
                                         columnNumber: 15
                                     }, this),
                                     showSettings && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7835,76 +9160,76 @@ function QuestionBasedTester(param) {
                                                                     d: "M3 3h18v18H3z"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1330,
+                                                                    lineNumber: 1413,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                     d: "M9 9h6v6H9z"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1331,
+                                                                    lineNumber: 1414,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                     d: "M3 9h6"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1332,
+                                                                    lineNumber: 1415,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                     d: "M15 9h6"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1333,
+                                                                    lineNumber: 1416,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                     d: "M3 15h6"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1334,
+                                                                    lineNumber: 1417,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                     d: "M15 15h6"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1335,
+                                                                    lineNumber: 1418,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                     d: "M9 3v6"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1336,
+                                                                    lineNumber: 1419,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                     d: "M9 15v6"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1337,
+                                                                    lineNumber: 1420,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                     d: "M15 3v6"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1338,
+                                                                    lineNumber: 1421,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                                     d: "M15 15v6"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                                    lineNumber: 1339,
+                                                                    lineNumber: 1422,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                            lineNumber: 1329,
+                                                            lineNumber: 1412,
                                                             columnNumber: 23
                                                         }, this),
                                                         "Zobrazit mřížku",
@@ -7912,18 +9237,18 @@ function QuestionBasedTester(param) {
                                                             size: 14
                                                         }, void 0, false, {
                                                             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                            lineNumber: 1342,
+                                                            lineNumber: 1425,
                                                             columnNumber: 23
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                    lineNumber: 1328,
+                                                    lineNumber: 1411,
                                                     columnNumber: 21
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1327,
+                                                lineNumber: 1410,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -7938,7 +9263,7 @@ function QuestionBasedTester(param) {
                                                         children: "Žádná mřížka"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1346,
+                                                        lineNumber: 1429,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7950,7 +9275,7 @@ function QuestionBasedTester(param) {
                                                         children: "Hlavní mřížka"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1352,
+                                                        lineNumber: 1435,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7962,7 +9287,7 @@ function QuestionBasedTester(param) {
                                                         children: "Vedlejší mřížka"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1358,
+                                                        lineNumber: 1441,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7974,7 +9299,7 @@ function QuestionBasedTester(param) {
                                                         children: "Hlavní a vedlejší mřížka"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1364,
+                                                        lineNumber: 1447,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -7986,25 +9311,25 @@ function QuestionBasedTester(param) {
                                                         children: "Bodová mřížka"
                                                     }, void 0, false, {
                                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                        lineNumber: 1370,
+                                                        lineNumber: 1453,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                                lineNumber: 1345,
+                                                lineNumber: 1428,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                        lineNumber: 1326,
+                                        lineNumber: 1409,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1306,
+                                lineNumber: 1389,
                                 columnNumber: 13
                             }, this),
                             rulerVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableRuler$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -8018,7 +9343,7 @@ function QuestionBasedTester(param) {
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1382,
+                                lineNumber: 1465,
                                 columnNumber: 15
                             }, this),
                             triangleVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableTriangle$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -8033,7 +9358,7 @@ function QuestionBasedTester(param) {
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1396,
+                                lineNumber: 1479,
                                 columnNumber: 15
                             }, this),
                             protractorVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableProtractor$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -8047,13 +9372,13 @@ function QuestionBasedTester(param) {
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                                lineNumber: 1411,
+                                lineNumber: 1494,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1299,
+                        lineNumber: 1382,
                         columnNumber: 11
                     }, this),
                     feedback && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -8063,32 +9388,32 @@ function QuestionBasedTester(param) {
                             children: feedback
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                            lineNumber: 1429,
+                            lineNumber: 1512,
                             columnNumber: 15
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                        lineNumber: 1426,
+                        lineNumber: 1509,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-                lineNumber: 1071,
+                lineNumber: 1127,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-            lineNumber: 1070,
+            lineNumber: 1126,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/Documents/geometry_review/app/components/QuestionBasedTester.tsx",
-        lineNumber: 1069,
+        lineNumber: 1125,
         columnNumber: 5
     }, this);
 }
-_s(QuestionBasedTester, "9/1l6cfx/U2re5dNiV8YElrOg48=");
+_s(QuestionBasedTester, "GTU6wa0GeVmDT4rgS797Zrwn6nM=");
 _c = QuestionBasedTester;
 var _c;
 __turbopack_context__.k.register(_c, "QuestionBasedTester");
@@ -8102,4 +9427,4 @@ __turbopack_context__.n(__turbopack_context__.i("[project]/Documents/geometry_re
 }),
 ]);
 
-//# sourceMappingURL=Documents_geometry_review_02010830._.js.map
+//# sourceMappingURL=Documents_geometry_review_451e0bc8._.js.map

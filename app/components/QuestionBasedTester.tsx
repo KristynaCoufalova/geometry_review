@@ -16,6 +16,7 @@ import { GridMode } from '../../lib/grid-manager'
 import { BoardManager, JBoard } from '../../lib/board-manager'
 import { GeometryFactory } from '../../lib/geometry-factory'
 import { SelectionManager } from '../../lib/selection-manager'
+import { calculateCenteredBoundingBoxCm } from '../../lib/measurement-scale'
 
 // Using JBoard from BoardManager
 
@@ -105,9 +106,9 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   const [rulerVisible, setRulerVisible] = useState(false)
   const [triangleVisible, setTriangleVisible] = useState(false)
   const [protractorVisible, setProtractorVisible] = useState(false)
-  const [rulerPosition, setRulerPosition] = useState({ x: 5, y: 4, rotation: 0, length: 6 })
-  const [trianglePosition, setTrianglePosition] = useState({ x: 7, y: 4, rotation: 0, size: 3 })
-  const [protractorPosition, setProtractorPosition] = useState({ x: 6, y: 3, rotation: 0, size: 3 })
+  const [rulerPosition, setRulerPosition] = useState({ x: 0, y: 0, rotation: 0, length: 6 })
+  const [trianglePosition, setTrianglePosition] = useState({ x: 2, y: 0, rotation: 0, size: 3 })
+  const [protractorPosition, setProtractorPosition] = useState({ x: -2, y: 0, rotation: 0, size: 3 })
   const [activeTool, setActiveTool] = useState<'ruler' | 'triangle' | 'protractor' | null>(null)
   const [uiBusy, setUiBusy] = useState(false)
   const [gridOption, setGridOption] = useState<GridMode>('major')
@@ -568,31 +569,13 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
 
     console.debug('Initializing board (post-loading), container:', containerRef.current);
 
-    // Calculate proper bounding box to maintain uniform scaling
+    // Calculate dynamic bounding box in whole centimeters, centered at (0,0)
     const containerRect = containerRef.current.getBoundingClientRect()
-    const worldWidth = 12  // 11 - (-1) = 12
-    const worldHeight = 9  // 8 - (-1) = 9
-    
-    // Calculate uniform scale to maintain aspect ratio
-    const scaleX = containerRect.width / worldWidth
-    const scaleY = containerRect.height / worldHeight
-    const uniformScale = Math.min(scaleX, scaleY)
-    
-    // Calculate centered bounding box
-    const scaledWidth = worldWidth * uniformScale
-    const scaledHeight = worldHeight * uniformScale
-    const offsetX = (containerRect.width - scaledWidth) / 2
-    const offsetY = (containerRect.height - scaledHeight) / 2
-    
-    // Convert back to world coordinates
-    const left = -1 - (offsetX / uniformScale)
-    const right = 11 + (offsetX / uniformScale)
-    const top = 8 + (offsetY / uniformScale)
-    const bottom = -1 - (offsetY / uniformScale)
+    const boundingBox = calculateCenteredBoundingBoxCm(containerRect.width, containerRect.height)
 
     const boardManager = new BoardManager({
       container: containerRef.current,
-      boundingbox: [left, top, right, bottom],
+      boundingbox: boundingBox,
       axis: false,
       showNavigation: false,
       showCopyright: false,

@@ -36,16 +36,12 @@ export default function DraggableProtractor({
   const { pxPerUnitX, pxPerUnitY } = getScale()
   const pxPerUnit = Math.min(pxPerUnitX, pxPerUnitY)
 
+  // Get bounding box info from scale hook
+  const scaleInfo = getScale()
+  const { boardLeft, boardTop, boardRight, boardBottom, boardWidth, boardHeight } = scaleInfo
+
   // Convert board coordinates to screen coordinates
   const boardToScreen = (boardX: number, boardY: number) => {
-    // Board bounding box: [-1, 8, 11, -1] (left, top, right, bottom)
-    const boardLeft = -1
-    const boardTop = 8
-    const boardRight = 11
-    const boardBottom = -1
-    const boardWidth = boardRight - boardLeft // 12
-    const boardHeight = boardTop - boardBottom // 9
-    
     // Get actual container dimensions
     const container = protractorRef.current?.closest('.jxgbox') as HTMLElement
     const containerWidth = container?.offsetWidth || 800
@@ -58,13 +54,6 @@ export default function DraggableProtractor({
   }
 
   const screenToBoard = (screenX: number, screenY: number) => {
-    const boardLeft = -1
-    const boardTop = 8
-    const boardRight = 11
-    const boardBottom = -1
-    const boardWidth = boardRight - boardLeft
-    const boardHeight = boardTop - boardBottom
-    
     const container = protractorRef.current?.closest('.jxgbox') as HTMLElement
     const containerWidth = container?.offsetWidth || 800
     const containerHeight = container?.offsetHeight || 500

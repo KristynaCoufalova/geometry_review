@@ -951,6 +951,8 @@ __turbopack_context__.s([
     ()=>WORLD_PER_CM,
     "WORLD_PER_MM",
     ()=>WORLD_PER_MM,
+    "calculateCenteredBoundingBoxCm",
+    ()=>calculateCenteredBoundingBoxCm,
     "defaultBoundingBoxCm",
     ()=>defaultBoundingBoxCm,
     "fromCm",
@@ -975,6 +977,44 @@ function defaultBoundingBoxCm(widthCm, heightCm) {
         heightCm + marginCm,
         widthCm + marginCm,
         0 - marginCm
+    ];
+}
+function calculateCenteredBoundingBoxCm(screenWidthPx, screenHeightPx) {
+    let minSizeCm = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : 10;
+    // Calculate aspect ratio
+    const screenAspect = screenWidthPx / screenHeightPx;
+    // Start with a reasonable default size
+    // We'll calculate whole centimeters that fit
+    const idealWidthCm = Math.max(minSizeCm, Math.floor(screenWidthPx / 30)) // ~30px per cm minimum
+    ;
+    const idealHeightCm = Math.max(minSizeCm, Math.floor(screenHeightPx / 30));
+    // Determine which dimension to constrain by
+    let widthCm;
+    let heightCm;
+    if (screenAspect > 1) {
+        // Landscape: width is larger, constrain by height
+        heightCm = idealHeightCm;
+        widthCm = Math.floor(heightCm * screenAspect);
+    } else {
+        // Portrait: height is larger, constrain by width
+        widthCm = idealWidthCm;
+        heightCm = Math.floor(widthCm / screenAspect);
+    }
+    // Ensure we have at least minSizeCm in both dimensions
+    widthCm = Math.max(widthCm, minSizeCm);
+    heightCm = Math.max(heightCm, minSizeCm);
+    // Ensure both are whole centimeters (already are from Math.floor, but be explicit)
+    widthCm = Math.floor(widthCm);
+    heightCm = Math.floor(heightCm);
+    // Create bounding box centered at (0,0)
+    // JSXGraph format: [left, top, right, bottom]
+    const halfWidth = widthCm / 2;
+    const halfHeight = heightCm / 2;
+    return [
+        -halfWidth,
+        halfHeight,
+        halfWidth,
+        -halfHeight // bottom
     ];
 }
 if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
@@ -1635,7 +1675,9 @@ __turbopack_context__.s([
     ()=>useBoardScale
 ]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/measurement-scale.ts [app-client] (ecmascript)");
 var _s = __turbopack_context__.k.signature();
+;
 ;
 function useBoardScale(ref) {
     _s();
@@ -1643,19 +1685,28 @@ function useBoardScale(ref) {
         "useBoardScale.useCallback[get]": ()=>{
             var _ref_current;
             const box = (_ref_current = ref.current) === null || _ref_current === void 0 ? void 0 : _ref_current.closest('.jxgbox');
-            if (!box) return {
-                pxPerUnitX: 50,
-                pxPerUnitY: 50,
-                uniformScale: 50
-            } // fallback
-            ;
+            if (!box) {
+                // Fallback with default bounding box
+                const [left, top, right, bottom] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["calculateCenteredBoundingBoxCm"])(800, 500);
+                const unitsX = right - left;
+                const unitsY = top - bottom;
+                return {
+                    pxPerUnitX: 50,
+                    pxPerUnitY: 50,
+                    uniformScale: 50,
+                    boardLeft: left,
+                    boardTop: top,
+                    boardRight: right,
+                    boardBottom: bottom,
+                    boardWidth: unitsX,
+                    boardHeight: unitsY
+                };
+            }
             const { width: w, height: h } = box.getBoundingClientRect();
-            // Must match your board bounding box:
-            const left = -1, top = 8, right = 11, bottom = -1;
-            const unitsX = right - left // 12
-            ;
-            const unitsY = top - bottom // 9
-            ;
+            // Calculate bounding box in whole centimeters, centered at (0,0)
+            const [left, top, right, bottom] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["calculateCenteredBoundingBoxCm"])(w, h);
+            const unitsX = right - left;
+            const unitsY = top - bottom;
             // Calculate uniform scale to maintain aspect ratio
             const scaleX = w / unitsX;
             const scaleY = h / unitsY;
@@ -1726,14 +1777,8 @@ function DraggableRuler(param) {
     // Memoized coordinate conversion functions for better performance
     const coordinateConverter = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMemo"])({
         "DraggableRuler.useMemo[coordinateConverter]": ()=>{
-            const boardLeft = -1;
-            const boardTop = 8;
-            const boardRight = 11;
-            const boardBottom = -1;
-            const boardWidth = boardRight - boardLeft // 12
-            ;
-            const boardHeight = boardTop - boardBottom // 9
-            ;
+            const scaleInfo = getScale();
+            const { boardLeft, boardTop, boardRight, boardBottom, boardWidth, boardHeight } = scaleInfo;
             return {
                 boardToScreen: ({
                     "DraggableRuler.useMemo[coordinateConverter]": (boardX, boardY)=>{
@@ -1766,7 +1811,9 @@ function DraggableRuler(param) {
                 })["DraggableRuler.useMemo[coordinateConverter]"]
             };
         }
-    }["DraggableRuler.useMemo[coordinateConverter]"], []);
+    }["DraggableRuler.useMemo[coordinateConverter]"], [
+        getScale
+    ]);
     const boardToScreen = coordinateConverter.boardToScreen;
     const screenToBoard = coordinateConverter.screenToBoard;
     const screenPos = boardToScreen(x, y);
@@ -2053,7 +2100,7 @@ function DraggableRuler(param) {
                 }
             }, "mark-".concat(i), false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                lineNumber: 286,
+                lineNumber: 282,
                 columnNumber: 9
             }, this));
             // Add labels for major marks (every 1 unit)
@@ -2069,7 +2116,7 @@ function DraggableRuler(param) {
                     children: unitValue
                 }, "label-".concat(i), false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                    lineNumber: 301,
+                    lineNumber: 297,
                     columnNumber: 11
                 }, this));
             }
@@ -2119,7 +2166,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(255,255,255,0.6)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 346,
+                                            lineNumber: 342,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2127,7 +2174,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(255,255,255,0.4)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 347,
+                                            lineNumber: 343,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2135,7 +2182,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(255,255,255,0.2)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 348,
+                                            lineNumber: 344,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2143,7 +2190,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(240,245,250,0.1)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 349,
+                                            lineNumber: 345,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2151,7 +2198,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(200,210,220,0.15)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 350,
+                                            lineNumber: 346,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2159,7 +2206,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(150,160,170,0.2)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 351,
+                                            lineNumber: 347,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2167,13 +2214,13 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(100,110,120,0.25)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 352,
+                                            lineNumber: 348,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 345,
+                                    lineNumber: 341,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("linearGradient", {
@@ -2188,7 +2235,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(255,255,255,0.8)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 357,
+                                            lineNumber: 353,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2196,7 +2243,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(255,255,255,0.4)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 358,
+                                            lineNumber: 354,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2204,7 +2251,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(255,255,255,0.1)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 359,
+                                            lineNumber: 355,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2212,13 +2259,13 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(255,255,255,0)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 360,
+                                            lineNumber: 356,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 356,
+                                    lineNumber: 352,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("linearGradient", {
@@ -2233,7 +2280,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(0,0,0,0)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 365,
+                                            lineNumber: 361,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2241,7 +2288,7 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(0,0,0,0.05)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 366,
+                                            lineNumber: 362,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -2249,13 +2296,13 @@ function DraggableRuler(param) {
                                             stopColor: "rgba(0,0,0,0.15)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 367,
+                                            lineNumber: 363,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 364,
+                                    lineNumber: 360,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -2273,7 +2320,7 @@ function DraggableRuler(param) {
                                             floodOpacity: "0.3"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 372,
+                                            lineNumber: 368,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feDropShadow", {
@@ -2284,7 +2331,7 @@ function DraggableRuler(param) {
                                             floodOpacity: "0.2"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 373,
+                                            lineNumber: 369,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feDropShadow", {
@@ -2295,13 +2342,13 @@ function DraggableRuler(param) {
                                             floodOpacity: "0.1"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 374,
+                                            lineNumber: 370,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 371,
+                                    lineNumber: 367,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -2316,7 +2363,7 @@ function DraggableRuler(param) {
                                             result: "coloredBlur"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 379,
+                                            lineNumber: 375,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feMerge", {
@@ -2325,32 +2372,32 @@ function DraggableRuler(param) {
                                                     in: "coloredBlur"
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                                    lineNumber: 381,
+                                                    lineNumber: 377,
                                                     columnNumber: 17
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feMergeNode", {
                                                     in: "SourceGraphic"
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                                    lineNumber: 382,
+                                                    lineNumber: 378,
                                                     columnNumber: 17
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 380,
+                                            lineNumber: 376,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 378,
+                                    lineNumber: 374,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                            lineNumber: 343,
+                            lineNumber: 339,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("g", {
@@ -2364,7 +2411,7 @@ function DraggableRuler(param) {
                                     fill: "rgba(240,245,250,0.25)"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 390,
+                                    lineNumber: 386,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -2375,7 +2422,7 @@ function DraggableRuler(param) {
                                     fill: "url(#rulerShadowGradient)"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 392,
+                                    lineNumber: 388,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -2386,7 +2433,7 @@ function DraggableRuler(param) {
                                     fill: "url(#rulerPlasticGradient)"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 394,
+                                    lineNumber: 390,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -2397,7 +2444,7 @@ function DraggableRuler(param) {
                                     fill: "url(#rulerHighlightGradient)"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 396,
+                                    lineNumber: 392,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -2410,13 +2457,13 @@ function DraggableRuler(param) {
                                     strokeWidth: "1.2"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 398,
+                                    lineNumber: 394,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                            lineNumber: 388,
+                            lineNumber: 384,
                             columnNumber: 11
                         }, this),
                         (()=>{
@@ -2438,7 +2485,7 @@ function DraggableRuler(param) {
                                     fill: "#000"
                                 }, "cm-".concat(cm), false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 416,
+                                    lineNumber: 412,
                                     columnNumber: 17
                                 }, this));
                                 // Millimeter marks (9 small ticks between each centimeter)
@@ -2456,7 +2503,7 @@ function DraggableRuler(param) {
                                             opacity: "0.75"
                                         }, "mm-".concat(cm, "-").concat(mm), false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 433,
+                                            lineNumber: 429,
                                             columnNumber: 21
                                         }, this));
                                     }
@@ -2480,7 +2527,7 @@ function DraggableRuler(param) {
                                         opacity: "0.75"
                                     }, "mm-final-".concat(mm), false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                        lineNumber: 458,
+                                        lineNumber: 454,
                                         columnNumber: 19
                                     }, this));
                                 }
@@ -2493,7 +2540,7 @@ function DraggableRuler(param) {
                                     fill: "#000"
                                 }, "cm-final", false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 472,
+                                    lineNumber: 468,
                                     columnNumber: 17
                                 }, this));
                             }
@@ -2502,7 +2549,7 @@ function DraggableRuler(param) {
                     ]
                 }, void 0, true, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                    lineNumber: 337,
+                    lineNumber: 333,
                     columnNumber: 9
                 }, this),
                 (()=>{
@@ -2526,7 +2573,7 @@ function DraggableRuler(param) {
                             children: cm
                         }, "ruler-number-".concat(cm), false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                            lineNumber: 498,
+                            lineNumber: 494,
                             columnNumber: 15
                         }, this));
                     }
@@ -2547,7 +2594,7 @@ function DraggableRuler(param) {
                             children: length.toFixed(1)
                         }, "ruler-number-final", false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                            lineNumber: 520,
+                            lineNumber: 516,
                             columnNumber: 15
                         }, this));
                     }
@@ -2569,12 +2616,12 @@ function DraggableRuler(param) {
                         className: "w-2 h-2 bg-emerald-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                        lineNumber: 555,
+                        lineNumber: 551,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                    lineNumber: 542,
+                    lineNumber: 538,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2593,23 +2640,23 @@ function DraggableRuler(param) {
                         className: "w-2 h-2 bg-amber-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                        lineNumber: 572,
+                        lineNumber: 568,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                    lineNumber: 559,
+                    lineNumber: 555,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-            lineNumber: 336,
+            lineNumber: 332,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-        lineNumber: 321,
+        lineNumber: 317,
         columnNumber: 5
     }, this);
 }
@@ -2670,14 +2717,8 @@ function DraggableTriangle(param) {
     // Memoized coordinate conversion functions for better performance
     const coordinateConverter = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMemo"])({
         "DraggableTriangle.useMemo[coordinateConverter]": ()=>{
-            const boardLeft = -1;
-            const boardTop = 8;
-            const boardRight = 11;
-            const boardBottom = -1;
-            const boardWidth = boardRight - boardLeft // 12
-            ;
-            const boardHeight = boardTop - boardBottom // 9
-            ;
+            const scaleInfo = getScale();
+            const { boardLeft, boardTop, boardRight, boardBottom, boardWidth, boardHeight } = scaleInfo;
             return {
                 boardToScreen: ({
                     "DraggableTriangle.useMemo[coordinateConverter]": (boardX, boardY)=>{
@@ -2710,7 +2751,9 @@ function DraggableTriangle(param) {
                 })["DraggableTriangle.useMemo[coordinateConverter]"]
             };
         }
-    }["DraggableTriangle.useMemo[coordinateConverter]"], []);
+    }["DraggableTriangle.useMemo[coordinateConverter]"], [
+        getScale
+    ]);
     const boardToScreen = coordinateConverter.boardToScreen;
     const screenToBoard = coordinateConverter.screenToBoard;
     const screenPos = boardToScreen(x, y);
@@ -3072,7 +3115,7 @@ function DraggableTriangle(param) {
                 fill: "#000"
             }, "h-cm-".concat(cm), false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                lineNumber: 343,
+                lineNumber: 339,
                 columnNumber: 9
             }, this));
             // Number labels will be handled separately as HTML elements
@@ -3091,7 +3134,7 @@ function DraggableTriangle(param) {
                         opacity: "0.75"
                     }, "h-mm-".concat(cm, "-").concat(mm), false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                        lineNumber: 362,
+                        lineNumber: 358,
                         columnNumber: 13
                     }, this));
                 }
@@ -3115,7 +3158,7 @@ function DraggableTriangle(param) {
                     opacity: "0.75"
                 }, "h-mm-final-".concat(mm), false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 387,
+                    lineNumber: 383,
                     columnNumber: 11
                 }, this));
             }
@@ -3128,7 +3171,7 @@ function DraggableTriangle(param) {
                 fill: "#000"
             }, "h-cm-final", false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                lineNumber: 401,
+                lineNumber: 397,
                 columnNumber: 9
             }, this));
         }
@@ -3148,7 +3191,7 @@ function DraggableTriangle(param) {
                 fill: "#000"
             }, "v-cm-".concat(cm), false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                lineNumber: 421,
+                lineNumber: 417,
                 columnNumber: 9
             }, this));
             // No number labels on the vertical ruler (left side)
@@ -3167,7 +3210,7 @@ function DraggableTriangle(param) {
                         opacity: "0.75"
                     }, "v-mm-".concat(cm, "-").concat(mm), false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                        lineNumber: 440,
+                        lineNumber: 436,
                         columnNumber: 13
                     }, this));
                 }
@@ -3192,7 +3235,7 @@ function DraggableTriangle(param) {
                     opacity: "0.75"
                 }, "v-mm-final-".concat(mm), false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 466,
+                    lineNumber: 462,
                     columnNumber: 11
                 }, this));
             }
@@ -3205,7 +3248,7 @@ function DraggableTriangle(param) {
                 fill: "#000"
             }, "v-cm-final", false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                lineNumber: 480,
+                lineNumber: 476,
                 columnNumber: 9
             }, this));
         }
@@ -3221,7 +3264,7 @@ function DraggableTriangle(param) {
                     children: "0"
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 494,
+                    lineNumber: 490,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("g", {
@@ -3229,7 +3272,7 @@ function DraggableTriangle(param) {
                     children: horizontalTicks
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 497,
+                    lineNumber: 493,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("g", {
@@ -3237,13 +3280,13 @@ function DraggableTriangle(param) {
                     children: verticalTicks
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 502,
+                    lineNumber: 498,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-            lineNumber: 492,
+            lineNumber: 488,
             columnNumber: 7
         }, this);
     };
@@ -3370,7 +3413,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(255,255,255,0.6)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 607,
+                                            lineNumber: 603,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3378,7 +3421,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(255,255,255,0.4)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 608,
+                                            lineNumber: 604,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3386,7 +3429,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(255,255,255,0.2)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 609,
+                                            lineNumber: 605,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3394,7 +3437,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(240,245,250,0.1)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 610,
+                                            lineNumber: 606,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3402,7 +3445,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(200,210,220,0.15)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 611,
+                                            lineNumber: 607,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3410,7 +3453,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(150,160,170,0.2)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 612,
+                                            lineNumber: 608,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3418,13 +3461,13 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(100,110,120,0.25)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 613,
+                                            lineNumber: 609,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 606,
+                                    lineNumber: 602,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("linearGradient", {
@@ -3439,7 +3482,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(255,255,255,0.8)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 618,
+                                            lineNumber: 614,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3447,7 +3490,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(255,255,255,0.4)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 619,
+                                            lineNumber: 615,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3455,7 +3498,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(255,255,255,0.1)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 620,
+                                            lineNumber: 616,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3463,13 +3506,13 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(255,255,255,0)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 621,
+                                            lineNumber: 617,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 617,
+                                    lineNumber: 613,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("linearGradient", {
@@ -3484,7 +3527,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(0,0,0,0)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 626,
+                                            lineNumber: 622,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3492,7 +3535,7 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(0,0,0,0.05)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 627,
+                                            lineNumber: 623,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -3500,13 +3543,13 @@ function DraggableTriangle(param) {
                                             stopColor: "rgba(0,0,0,0.15)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 628,
+                                            lineNumber: 624,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 625,
+                                    lineNumber: 621,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -3524,7 +3567,7 @@ function DraggableTriangle(param) {
                                             floodOpacity: "0.3"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 633,
+                                            lineNumber: 629,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feDropShadow", {
@@ -3535,7 +3578,7 @@ function DraggableTriangle(param) {
                                             floodOpacity: "0.2"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 634,
+                                            lineNumber: 630,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feDropShadow", {
@@ -3546,13 +3589,13 @@ function DraggableTriangle(param) {
                                             floodOpacity: "0.1"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 635,
+                                            lineNumber: 631,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 632,
+                                    lineNumber: 628,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -3568,7 +3611,7 @@ function DraggableTriangle(param) {
                                             result: "flood"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 640,
+                                            lineNumber: 636,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feComposite", {
@@ -3578,7 +3621,7 @@ function DraggableTriangle(param) {
                                             result: "composite"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 641,
+                                            lineNumber: 637,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feGaussianBlur", {
@@ -3587,7 +3630,7 @@ function DraggableTriangle(param) {
                                             result: "blur"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 642,
+                                            lineNumber: 638,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feOffset", {
@@ -3597,7 +3640,7 @@ function DraggableTriangle(param) {
                                             result: "offset"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 643,
+                                            lineNumber: 639,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feComposite", {
@@ -3606,13 +3649,13 @@ function DraggableTriangle(param) {
                                             operator: "over"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 644,
+                                            lineNumber: 640,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 639,
+                                    lineNumber: 635,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -3628,7 +3671,7 @@ function DraggableTriangle(param) {
                                             result: "flood"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 649,
+                                            lineNumber: 645,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feComposite", {
@@ -3638,7 +3681,7 @@ function DraggableTriangle(param) {
                                             result: "composite"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 650,
+                                            lineNumber: 646,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feGaussianBlur", {
@@ -3647,7 +3690,7 @@ function DraggableTriangle(param) {
                                             result: "blur"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 651,
+                                            lineNumber: 647,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feOffset", {
@@ -3657,7 +3700,7 @@ function DraggableTriangle(param) {
                                             result: "offset"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 652,
+                                            lineNumber: 648,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feComposite", {
@@ -3666,13 +3709,13 @@ function DraggableTriangle(param) {
                                             operator: "over"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 653,
+                                            lineNumber: 649,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 648,
+                                    lineNumber: 644,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -3687,7 +3730,7 @@ function DraggableTriangle(param) {
                                             result: "coloredBlur"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 658,
+                                            lineNumber: 654,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feMerge", {
@@ -3696,26 +3739,26 @@ function DraggableTriangle(param) {
                                                     in: "coloredBlur"
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                                    lineNumber: 660,
+                                                    lineNumber: 656,
                                                     columnNumber: 17
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("feMergeNode", {
                                                     in: "SourceGraphic"
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                                    lineNumber: 661,
+                                                    lineNumber: 657,
                                                     columnNumber: 17
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 659,
+                                            lineNumber: 655,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 657,
+                                    lineNumber: 653,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("mask", {
@@ -3726,7 +3769,7 @@ function DraggableTriangle(param) {
                                             fill: "white"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 668,
+                                            lineNumber: 664,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -3734,7 +3777,7 @@ function DraggableTriangle(param) {
                                             fill: "black"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 670,
+                                            lineNumber: 666,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -3742,19 +3785,19 @@ function DraggableTriangle(param) {
                                             fill: "black"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 671,
+                                            lineNumber: 667,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 666,
+                                    lineNumber: 662,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 604,
+                            lineNumber: 600,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("g", {
@@ -3766,7 +3809,7 @@ function DraggableTriangle(param) {
                                     mask: "url(#triangle-mask-".concat(type, ")")
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 678,
+                                    lineNumber: 674,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -3775,7 +3818,7 @@ function DraggableTriangle(param) {
                                     mask: "url(#triangle-mask-".concat(type, ")")
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 680,
+                                    lineNumber: 676,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -3784,7 +3827,7 @@ function DraggableTriangle(param) {
                                     mask: "url(#triangle-mask-".concat(type, ")")
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 682,
+                                    lineNumber: 678,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -3793,7 +3836,7 @@ function DraggableTriangle(param) {
                                     mask: "url(#triangle-mask-".concat(type, ")")
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 684,
+                                    lineNumber: 680,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -3803,13 +3846,13 @@ function DraggableTriangle(param) {
                                     strokeWidth: "2.5"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 686,
+                                    lineNumber: 682,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 676,
+                            lineNumber: 672,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
@@ -3822,7 +3865,7 @@ function DraggableTriangle(param) {
                             strokeDasharray: "4 3"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 690,
+                            lineNumber: 686,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -3833,7 +3876,7 @@ function DraggableTriangle(param) {
                             strokeLinecap: "round"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 701,
+                            lineNumber: 697,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("text", {
@@ -3846,7 +3889,7 @@ function DraggableTriangle(param) {
                             children: "90°"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 710,
+                            lineNumber: 706,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -3855,49 +3898,49 @@ function DraggableTriangle(param) {
                             stroke: "#000000",
                             strokeWidth: "1.2",
                             filter: "url(#deepInnerShadow-".concat(type, ")")
+                        }, void 0, false, {
+                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
+                            lineNumber: 718,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
+                            d: cut2,
+                            fill: "none",
+                            stroke: "#000000",
+                            strokeWidth: "1.2",
+                            filter: "url(#deepInnerShadow-".concat(type, ")")
+                        }, void 0, false, {
+                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
+                            lineNumber: 719,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
+                            d: cut1,
+                            fill: "none",
+                            stroke: "#000000",
+                            strokeWidth: "1.2",
+                            filter: "url(#innerShadow-".concat(type, ")")
+                        }, void 0, false, {
+                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
+                            lineNumber: 721,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
+                            d: cut2,
+                            fill: "none",
+                            stroke: "#000000",
+                            strokeWidth: "1.2",
+                            filter: "url(#innerShadow-".concat(type, ")")
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
                             lineNumber: 722,
-                            columnNumber: 11
-                        }, this),
-                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
-                            d: cut2,
-                            fill: "none",
-                            stroke: "#000000",
-                            strokeWidth: "1.2",
-                            filter: "url(#deepInnerShadow-".concat(type, ")")
-                        }, void 0, false, {
-                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 723,
-                            columnNumber: 11
-                        }, this),
-                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
-                            d: cut1,
-                            fill: "none",
-                            stroke: "#000000",
-                            strokeWidth: "1.2",
-                            filter: "url(#innerShadow-".concat(type, ")")
-                        }, void 0, false, {
-                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 725,
-                            columnNumber: 11
-                        }, this),
-                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
-                            d: cut2,
-                            fill: "none",
-                            stroke: "#000000",
-                            strokeWidth: "1.2",
-                            filter: "url(#innerShadow-".concat(type, ")")
-                        }, void 0, false, {
-                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 726,
                             columnNumber: 11
                         }, this),
                         renderRulerMarkingsSvg()
                     ]
                 }, void 0, true, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 598,
+                    lineNumber: 594,
                     columnNumber: 9
                 }, this),
                 (()=>{
@@ -3923,7 +3966,7 @@ function DraggableTriangle(param) {
                             children: cm
                         }, "h-number-".concat(cm), false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 743,
+                            lineNumber: 739,
                             columnNumber: 15
                         }, this));
                     }
@@ -3944,7 +3987,7 @@ function DraggableTriangle(param) {
                             children: size.toFixed(1)
                         }, "h-number-final", false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 765,
+                            lineNumber: 761,
                             columnNumber: 15
                         }, this));
                     }
@@ -3966,12 +4009,12 @@ function DraggableTriangle(param) {
                         className: "w-2 h-2 bg-emerald-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                        lineNumber: 800,
+                        lineNumber: 796,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 787,
+                    lineNumber: 783,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3990,23 +4033,23 @@ function DraggableTriangle(param) {
                         className: "w-2 h-2 bg-amber-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                        lineNumber: 817,
+                        lineNumber: 813,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 804,
+                    lineNumber: 800,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-            lineNumber: 597,
+            lineNumber: 593,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-        lineNumber: 580,
+        lineNumber: 576,
         columnNumber: 5
     }, this);
 }
@@ -4062,18 +4105,12 @@ function DraggableProtractor(param) {
     const getScale = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$hooks$2f$useBoardScale$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useBoardScale"])(protractorRef);
     const { pxPerUnitX, pxPerUnitY } = getScale();
     const pxPerUnit = Math.min(pxPerUnitX, pxPerUnitY);
+    // Get bounding box info from scale hook
+    const scaleInfo = getScale();
+    const { boardLeft, boardTop, boardRight, boardBottom, boardWidth, boardHeight } = scaleInfo;
     // Convert board coordinates to screen coordinates
     const boardToScreen = (boardX, boardY)=>{
         var _protractorRef_current;
-        // Board bounding box: [-1, 8, 11, -1] (left, top, right, bottom)
-        const boardLeft = -1;
-        const boardTop = 8;
-        const boardRight = 11;
-        const boardBottom = -1;
-        const boardWidth = boardRight - boardLeft // 12
-        ;
-        const boardHeight = boardTop - boardBottom // 9
-        ;
         // Get actual container dimensions
         const container = (_protractorRef_current = protractorRef.current) === null || _protractorRef_current === void 0 ? void 0 : _protractorRef_current.closest('.jxgbox');
         const containerWidth = (container === null || container === void 0 ? void 0 : container.offsetWidth) || 800;
@@ -4087,12 +4124,6 @@ function DraggableProtractor(param) {
     };
     const screenToBoard = (screenX, screenY)=>{
         var _protractorRef_current;
-        const boardLeft = -1;
-        const boardTop = 8;
-        const boardRight = 11;
-        const boardBottom = -1;
-        const boardWidth = boardRight - boardLeft;
-        const boardHeight = boardTop - boardBottom;
         const container = (_protractorRef_current = protractorRef.current) === null || _protractorRef_current === void 0 ? void 0 : _protractorRef_current.closest('.jxgbox');
         const containerWidth = (container === null || container === void 0 ? void 0 : container.offsetWidth) || 800;
         const containerHeight = (container === null || container === void 0 ? void 0 : container.offsetHeight) || 500;
@@ -4392,7 +4423,7 @@ function DraggableProtractor(param) {
                 strokeWidth: strokeWidth
             }, "mark-".concat(angle), false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                lineNumber: 299,
+                lineNumber: 288,
                 columnNumber: 9
             }, this));
             // Add degree labels for every 10 degrees
@@ -4416,7 +4447,7 @@ function DraggableProtractor(param) {
                     ]
                 }, "label-".concat(angle), true, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                    lineNumber: 317,
+                    lineNumber: 306,
                     columnNumber: 11
                 }, this));
             }
@@ -4469,12 +4500,12 @@ function DraggableProtractor(param) {
                                         floodOpacity: "0.15"
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                        lineNumber: 367,
+                                        lineNumber: 356,
                                         columnNumber: 15
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                    lineNumber: 366,
+                                    lineNumber: 355,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("mask", {
@@ -4486,7 +4517,7 @@ function DraggableProtractor(param) {
                                             fill: "white"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                            lineNumber: 370,
+                                            lineNumber: 359,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -4497,19 +4528,19 @@ function DraggableProtractor(param) {
                                             fill: "black"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                            lineNumber: 372,
+                                            lineNumber: 361,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                    lineNumber: 369,
+                                    lineNumber: 358,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 365,
+                            lineNumber: 354,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -4518,7 +4549,7 @@ function DraggableProtractor(param) {
                             stroke: "none"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 383,
+                            lineNumber: 372,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -4529,7 +4560,7 @@ function DraggableProtractor(param) {
                             fill: "rgba(107,114,128,0.22)"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 390,
+                            lineNumber: 379,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -4541,7 +4572,7 @@ function DraggableProtractor(param) {
                             filter: "url(#protractorShadow)"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 399,
+                            lineNumber: 388,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
@@ -4554,7 +4585,7 @@ function DraggableProtractor(param) {
                             strokeLinecap: "round"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 402,
+                            lineNumber: 391,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
@@ -4567,7 +4598,7 @@ function DraggableProtractor(param) {
                             strokeLinecap: "round"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 406,
+                            lineNumber: 395,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -4578,7 +4609,7 @@ function DraggableProtractor(param) {
                             mask: "url(#innerArcMask-".concat(uid, ")")
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 410,
+                            lineNumber: 399,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("circle", {
@@ -4591,14 +4622,14 @@ function DraggableProtractor(param) {
                             filter: "url(#protractorShadow)"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 414,
+                            lineNumber: 403,
                             columnNumber: 11
                         }, this),
                         generateMarkings()
                     ]
                 }, void 0, true, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                    lineNumber: 354,
+                    lineNumber: 343,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4617,12 +4648,12 @@ function DraggableProtractor(param) {
                         className: "w-2 h-2 bg-emerald-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                        lineNumber: 435,
+                        lineNumber: 424,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                    lineNumber: 422,
+                    lineNumber: 411,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4641,23 +4672,23 @@ function DraggableProtractor(param) {
                         className: "w-2 h-2 bg-amber-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                        lineNumber: 452,
+                        lineNumber: 441,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                    lineNumber: 439,
+                    lineNumber: 428,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-            lineNumber: 353,
+            lineNumber: 342,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-        lineNumber: 338,
+        lineNumber: 327,
         columnNumber: 5
     }, this);
 }
@@ -4696,12 +4727,14 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$geometry$2d$factory$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/geometry-factory.ts [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$selection$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/selection-manager.ts [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$rename$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/rename-manager.ts [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/lib/measurement-scale.ts [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableRuler$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/app/components/DraggableRuler.tsx [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableTriangle$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx [app-client] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableProtractor$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx [app-client] (ecmascript)");
 ;
 var _s = __turbopack_context__.k.signature();
 'use client';
+;
 ;
 ;
 ;
@@ -4756,20 +4789,20 @@ function GeometryConstructionTester() {
     const [triangleVisible, setTriangleVisible] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     const [protractorVisible, setProtractorVisible] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
     const [rulerPosition, setRulerPosition] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({
-        x: 5,
-        y: 4,
+        x: 0,
+        y: 0,
         rotation: 0,
         length: 6
     });
     const [trianglePosition, setTrianglePosition] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({
-        x: 7,
-        y: 4,
+        x: 2,
+        y: 0,
         rotation: 0,
         size: 3
     });
     const [protractorPosition, setProtractorPosition] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])({
-        x: 6,
-        y: 3,
+        x: -2,
+        y: 0,
         rotation: 0,
         size: 3
     });
@@ -5246,15 +5279,13 @@ function GeometryConstructionTester() {
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "GeometryConstructionTester.useEffect": ()=>{
             if (!containerRef.current) return;
+            // Calculate dynamic bounding box in whole centimeters, centered at (0,0)
+            const containerRect = containerRef.current.getBoundingClientRect();
+            const boundingBox = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$measurement$2d$scale$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["calculateCenteredBoundingBoxCm"])(containerRect.width, containerRect.height);
             // Create board manager
             const boardManager = new __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$lib$2f$board$2d$manager$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BoardManager"]({
                 container: containerRef.current,
-                boundingbox: [
-                    -1,
-                    8,
-                    11,
-                    -1
-                ],
+                boundingbox: boundingBox,
                 axis: false,
                 showNavigation: false,
                 showCopyright: false,
@@ -5321,15 +5352,16 @@ function GeometryConstructionTester() {
                 }
             }["GeometryConstructionTester.useEffect.downHandler"];
             brd.on('down', downHandler);
-            // Initialize givens
+            // Initialize givens - positioned relative to center (0,0)
+            // Line q: horizontal line below center
             const q = brd.create('line', [
                 [
-                    0,
-                    7
+                    -3,
+                    -2
                 ],
                 [
-                    10,
-                    7
+                    3,
+                    -2
                 ]
             ], {
                 strokeColor: '#000',
@@ -5346,8 +5378,8 @@ function GeometryConstructionTester() {
                 }
             });
             const S = brd.create('point', [
-                5,
-                5
+                0,
+                0
             ], {
                 name: 'S',
                 size: 3,
@@ -5362,8 +5394,8 @@ function GeometryConstructionTester() {
                 }
             });
             const C = brd.create('point', [
-                4.5,
-                3
+                -0.5,
+                -4
             ], {
                 name: 'C',
                 size: 3,
@@ -5642,7 +5674,7 @@ function GeometryConstructionTester() {
                         children: "Úloha 9: Konstrukce trojúhelníku"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                        lineNumber: 650,
+                        lineNumber: 656,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -5652,12 +5684,12 @@ function GeometryConstructionTester() {
                             children: "Sestrojte rovnoramenný trojúhelník ABC. Bod C je vrchol, S je střed ramene, AB leží na přímce q."
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                            lineNumber: 655,
+                            lineNumber: 661,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                        lineNumber: 654,
+                        lineNumber: 660,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -5681,27 +5713,27 @@ function GeometryConstructionTester() {
                                                 d: "M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                                lineNumber: 669,
+                                                lineNumber: 675,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
                                                 d: "M13 13l6 6"
                                             }, void 0, false, {
                                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                                lineNumber: 670,
+                                                lineNumber: 676,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 668,
+                                        lineNumber: 674,
                                         columnNumber: 15
                                     }, this),
                                     "Myš"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 662,
+                                lineNumber: 668,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5712,14 +5744,14 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 680,
+                                        lineNumber: 686,
                                         columnNumber: 15
                                     }, this),
                                     " Bod"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 674,
+                                lineNumber: 680,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5730,14 +5762,14 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 688,
+                                        lineNumber: 694,
                                         columnNumber: 15
                                     }, this),
                                     " Úsečka"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 682,
+                                lineNumber: 688,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5748,14 +5780,14 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 696,
+                                        lineNumber: 702,
                                         columnNumber: 15
                                     }, this),
                                     " Přímka"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 690,
+                                lineNumber: 696,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5766,14 +5798,14 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 704,
+                                        lineNumber: 710,
                                         columnNumber: 15
                                     }, this),
                                     " Kružnice"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 698,
+                                lineNumber: 704,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5784,14 +5816,14 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 712,
+                                        lineNumber: 718,
                                         columnNumber: 15
                                     }, this),
                                     " Guma"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 706,
+                                lineNumber: 712,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5801,14 +5833,14 @@ function GeometryConstructionTester() {
                                 children: "✎ Název bodu"
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 714,
+                                lineNumber: 720,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "border-l-2 border-gray-300 mx-2"
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 724,
+                                lineNumber: 730,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5819,14 +5851,14 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 732,
+                                        lineNumber: 738,
                                         columnNumber: 15
                                     }, this),
                                     " Pravítko"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 726,
+                                lineNumber: 732,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5837,14 +5869,14 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 740,
+                                        lineNumber: 746,
                                         columnNumber: 15
                                     }, this),
                                     " Trojúhelník"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 734,
+                                lineNumber: 740,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5855,21 +5887,21 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 748,
+                                        lineNumber: 754,
                                         columnNumber: 15
                                     }, this),
                                     " Úhloměr"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 742,
+                                lineNumber: 748,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                 className: "flex-1"
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 751,
+                                lineNumber: 757,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5881,14 +5913,14 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 758,
+                                        lineNumber: 764,
                                         columnNumber: 15
                                     }, this),
                                     " Zpět"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 753,
+                                lineNumber: 759,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5899,14 +5931,14 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 761,
+                                        lineNumber: 767,
                                         columnNumber: 15
                                     }, this),
                                     " Vymazat"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 760,
+                                lineNumber: 766,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -5917,20 +5949,20 @@ function GeometryConstructionTester() {
                                         size: 18
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                        lineNumber: 764,
+                                        lineNumber: 770,
                                         columnNumber: 15
                                     }, this),
                                     " Uložit"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 763,
+                                lineNumber: 769,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                        lineNumber: 661,
+                        lineNumber: 667,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -5956,7 +5988,7 @@ function GeometryConstructionTester() {
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 776,
+                                lineNumber: 782,
                                 columnNumber: 15
                             }, this),
                             triangleVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableTriangle$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -5974,7 +6006,7 @@ function GeometryConstructionTester() {
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 793,
+                                lineNumber: 799,
                                 columnNumber: 15
                             }, this),
                             protractorVisible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$app$2f$components$2f$DraggableProtractor$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -5991,13 +6023,13 @@ function GeometryConstructionTester() {
                                 onUiBusyChange: setUiBusy
                             }, void 0, false, {
                                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                                lineNumber: 811,
+                                lineNumber: 817,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                        lineNumber: 768,
+                        lineNumber: 774,
                         columnNumber: 11
                     }, this),
                     feedback && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -6007,32 +6039,32 @@ function GeometryConstructionTester() {
                             children: feedback
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                            lineNumber: 832,
+                            lineNumber: 838,
                             columnNumber: 15
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                        lineNumber: 829,
+                        lineNumber: 835,
                         columnNumber: 13
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-                lineNumber: 649,
+                lineNumber: 655,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-            lineNumber: 648,
+            lineNumber: 654,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/Documents/geometry_review/app/components/GeometryConstructionTester.tsx",
-        lineNumber: 647,
+        lineNumber: 653,
         columnNumber: 5
     }, this);
 }
-_s(GeometryConstructionTester, "BT+YgzxQlCQRk3yQ7KJxdYyfKNE=");
+_s(GeometryConstructionTester, "LN2izDlVKnd/o1ILBtlpQ8n28bQ=");
 _c = GeometryConstructionTester;
 var _c;
 __turbopack_context__.k.register(_c, "GeometryConstructionTester");

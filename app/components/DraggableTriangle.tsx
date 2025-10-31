@@ -40,12 +40,8 @@ export default function DraggableTriangle({
 
   // Memoized coordinate conversion functions for better performance
   const coordinateConverter = useMemo(() => {
-    const boardLeft = -1
-    const boardTop = 8
-    const boardRight = 11
-    const boardBottom = -1
-    const boardWidth = boardRight - boardLeft // 12
-    const boardHeight = boardTop - boardBottom // 9
+    const scaleInfo = getScale()
+    const { boardLeft, boardTop, boardRight, boardBottom, boardWidth, boardHeight } = scaleInfo
     
     return {
       boardToScreen: (boardX: number, boardY: number) => {
@@ -70,7 +66,7 @@ export default function DraggableTriangle({
         return { x: boardX, y: boardY }
       }
     }
-  }, [])
+  }, [getScale])
 
   const boardToScreen = coordinateConverter.boardToScreen
   const screenToBoard = coordinateConverter.screenToBoard

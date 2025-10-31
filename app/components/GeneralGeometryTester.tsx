@@ -14,6 +14,7 @@ import { SelectionManager } from '../../lib/selection-manager'
 import { RenameManager } from '../../lib/rename-manager'
 import { WORLD_PER_MM, WORLD_PER_CM } from '../../lib/measurement-scale'
 import { UNIT_LABEL } from '../../lib/measurement-scale'
+import { calculateCenteredBoundingBoxCm } from '../../lib/measurement-scale'
 import { exportBoard, importBoard, type Snapshot } from '../../lib/board-serializer'
 import { readJsonFile, downloadJson } from '../../lib/file-io'
 import SelectObjectsTool from '../../lib/select-objects-tool'
@@ -81,9 +82,9 @@ export default function GeneralGeometryTester() {
   const [rulerVisible, setRulerVisible] = useState(false)
   const [triangleVisible, setTriangleVisible] = useState(false)
   const [protractorVisible, setProtractorVisible] = useState(false)
-  const [rulerPosition, setRulerPosition] = useState({ x: 5, y: 4, rotation: 0, length: 6 })
-  const [trianglePosition, setTrianglePosition] = useState({ x: 7, y: 4, rotation: 0, size: 3 })
-  const [protractorPosition, setProtractorPosition] = useState({ x: 6, y: 3, rotation: 0, size: 3 })
+  const [rulerPosition, setRulerPosition] = useState({ x: 0, y: 0, rotation: 0, length: 6 })
+  const [trianglePosition, setTrianglePosition] = useState({ x: 2, y: 0, rotation: 0, size: 3 })
+  const [protractorPosition, setProtractorPosition] = useState({ x: -2, y: 0, rotation: 0, size: 3 })
   const [activeTool, setActiveTool] = useState<'ruler' | 'triangle' | 'protractor' | null>(null)
   const [uiBusy, setUiBusy] = useState(false)
   
@@ -469,10 +470,14 @@ export default function GeneralGeometryTester() {
   useEffect(() => {
     if (!containerRef.current) return
 
+    // Calculate dynamic bounding box in whole centimeters, centered at (0,0)
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const boundingBox = calculateCenteredBoundingBoxCm(containerRect.width, containerRect.height)
+
     // Create board manager (handles board creation and grid management)
     const boardManager = new BoardManager({
       container: containerRef.current,
-      boundingbox: [-1, 8, 11, -1],
+      boundingbox: boundingBox,
       axis: false,
       showNavigation: false,
       showCopyright: false,

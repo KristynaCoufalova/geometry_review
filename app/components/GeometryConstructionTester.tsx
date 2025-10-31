@@ -9,6 +9,7 @@ import { BoardManager, JBoard } from '../../lib/board-manager'
 import { GeometryFactory } from '../../lib/geometry-factory'
 import { SelectionManager } from '../../lib/selection-manager'
 import { RenameManager } from '../../lib/rename-manager'
+import { calculateCenteredBoundingBoxCm } from '../../lib/measurement-scale'
 import DraggableRuler from './DraggableRuler'
 import DraggableTriangle from './DraggableTriangle'
 import DraggableProtractor from './DraggableProtractor'
@@ -55,9 +56,9 @@ export default function GeometryConstructionTester() {
   const [rulerVisible, setRulerVisible] = useState(false)
   const [triangleVisible, setTriangleVisible] = useState(false)
   const [protractorVisible, setProtractorVisible] = useState(false)
-  const [rulerPosition, setRulerPosition] = useState({ x: 5, y: 4, rotation: 0, length: 6 })
-  const [trianglePosition, setTrianglePosition] = useState({ x: 7, y: 4, rotation: 0, size: 3 })
-  const [protractorPosition, setProtractorPosition] = useState({ x: 6, y: 3, rotation: 0, size: 3 })
+  const [rulerPosition, setRulerPosition] = useState({ x: 0, y: 0, rotation: 0, length: 6 })
+  const [trianglePosition, setTrianglePosition] = useState({ x: 2, y: 0, rotation: 0, size: 3 })
+  const [protractorPosition, setProtractorPosition] = useState({ x: -2, y: 0, rotation: 0, size: 3 })
   const [activeTool, setActiveTool] = useState<'ruler' | 'triangle' | 'protractor' | null>(null)
   const [uiBusy, setUiBusy] = useState(false)
   
@@ -371,10 +372,14 @@ export default function GeometryConstructionTester() {
   useEffect(() => {
     if (!containerRef.current) return
 
+    // Calculate dynamic bounding box in whole centimeters, centered at (0,0)
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const boundingBox = calculateCenteredBoundingBoxCm(containerRect.width, containerRect.height)
+
     // Create board manager
     const boardManager = new BoardManager({
       container: containerRef.current,
-      boundingbox: [-1, 8, 11, -1],
+      boundingbox: boundingBox,
       axis: false,
       showNavigation: false,
       showCopyright: false,
@@ -419,17 +424,18 @@ export default function GeometryConstructionTester() {
     const downHandler = (e:any) => { handleClickRef.current?.(brd, e) }
     brd.on('down', downHandler)
 
-    // Initialize givens
-    const q = brd.create('line', [[0, 7], [10, 7]], {
+    // Initialize givens - positioned relative to center (0,0)
+    // Line q: horizontal line below center
+    const q = brd.create('line', [[-3, -2], [3, -2]], {
       strokeColor: '#000', strokeWidth: 2,
       name: 'q', withLabel: true, fixed: true,
       label: { position: 'rt', offset: [10, 0] }
     })
-    const S = brd.create('point', [5, 5], {
+    const S = brd.create('point', [0, 0], {
       name: 'S', size: 3, strokeColor: '#000', fillColor: '#000', fixed: true,
       label: { offset: [5, 10] }
     })
-    const C = brd.create('point', [4.5, 3], {
+    const C = brd.create('point', [-0.5, -4], {
       name: 'C', size: 3, strokeColor: '#000', fillColor: '#000', fixed: true,
       label: { offset: [5, -15] }
     })

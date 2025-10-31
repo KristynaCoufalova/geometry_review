@@ -995,109 +995,135 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
           </div>
 
           {/* Toolbar */}
-          <div className="flex flex-wrap gap-2 mb-4 p-4 bg-gray-100 rounded-lg">
-            <button 
-              onClick={() => setTool('mouse')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                tool === 'mouse' ? 'bg-gray-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
-                <path d="M13 13l6 6"/>
-              </svg>
-              Myš
-            </button>
-            <button 
-              onClick={() => setTool('point')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                tool === 'point' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Circle size={18}/> Bod
-            </button>
-            <button 
-              onClick={() => setTool('segment')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                tool === 'segment' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Pencil size={18}/> Úsečka
-            </button>
-            <button 
-              onClick={() => setTool('line')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                tool === 'line' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Pencil size={18}/> Přímka
-            </button>
-            <button 
-              onClick={() => setTool('circle')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                tool === 'circle' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Circle size={18}/> Kružnice
-            </button>
-            <button 
-              onClick={() => setTool('rubber')}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                tool === 'rubber' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Eraser size={18}/> Guma
-            </button>
-            
-            <div className="border-l-2 border-gray-300 mx-2"></div>
-            
-            <button 
-              onClick={toggleRuler}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                rulerVisible ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Ruler size={18}/> Pravítko
-            </button>
-            <button 
-              onClick={toggleTriangle}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                triangleVisible ? 'bg-purple-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Triangle size={18}/> Trojúhelník
-            </button>
-            <button 
-              onClick={toggleProtractor}
-              className={`px-3 py-2 rounded flex items-center gap-2 ${
-                protractorVisible ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Gauge size={18}/> Úhloměr
-            </button>
+          <div className="mb-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-md">
+            {/* First Row: Drawing Tools & Physical Tools */}
+            <div className="flex flex-wrap items-center gap-2.5 p-4 border-b border-gray-200 bg-white/50 rounded-t-xl">
+              {/* Drawing Tools Section */}
+              <div className="flex items-center gap-2 pr-2 border-r border-gray-300">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2">Kreslení</span>
+                <button 
+                  onClick={() => setTool('mouse')}
+                  className={`px-3 py-2 rounded-md flex items-center gap-2 transition-all text-sm font-medium shadow-sm ${
+                    tool === 'mouse' ? 'bg-gray-700 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                  }`}
+                  title="Myš - Interakce s objekty bez vytváření"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+                    <path d="M13 13l6 6"/>
+                  </svg>
+                  Myš
+                </button>
+                <button 
+                  onClick={() => setTool('point')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'point' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-300'
+                  }`}
+                  title="Bod - Vytvoření bodu kliknutím"
+                >
+                  <Circle size={18}/> Bod
+                </button>
+                <button 
+                  onClick={() => setTool('segment')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'segment' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-300'
+                  }`}
+                  title="Úsečka - Klikněte na dva body"
+                >
+                  <Pencil size={18}/> Úsečka
+                </button>
+                <button 
+                  onClick={() => setTool('line')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'line' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-300'
+                  }`}
+                  title="Přímka - Klikněte na dva body"
+                >
+                  <Pencil size={18}/> Přímka
+                </button>
+                <button 
+                  onClick={() => setTool('circle')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'circle' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-blue-50 border border-gray-300'
+                  }`}
+                  title="Kružnice - Střed a bod na kružnici"
+                >
+                  <Circle size={18}/> Kružnice
+                </button>
+              </div>
 
-            <div className="flex-1"></div>
+              {/* Editing Tools Section */}
+              <div className="flex items-center gap-2 pr-2 border-r border-gray-300">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2">Úpravy</span>
+                <button 
+                  onClick={() => setTool('rubber')}
+                  className={`px-3.5 py-2 rounded-lg flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    tool === 'rubber' ? 'bg-red-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-red-50 border border-gray-300'
+                  }`}
+                  title="Guma - Smazání objektu"
+                >
+                  <Eraser size={18}/> Guma
+                </button>
+              </div>
+            
+              {/* Physical Tools Section */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-2">Nástroje</span>
+                <button 
+                  onClick={toggleRuler}
+                  className={`px-3 py-2 rounded flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    rulerVisible ? 'bg-yellow-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-yellow-50 border border-gray-300'
+                  }`}
+                  title="Pravítko - Měření vzdáleností"
+                >
+                  <Ruler size={18}/> Pravítko
+                </button>
+                <button 
+                  onClick={toggleTriangle}
+                  className={`px-3 py-2 rounded flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    triangleVisible ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-purple-50 border border-gray-300'
+                  }`}
+                  title="Trojúhelník - Rýsování úhlů"
+                >
+                  <Triangle size={18}/> Trojúhelník
+                </button>
+                <button 
+                  onClick={toggleProtractor}
+                  className={`px-3 py-2 rounded flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md ${
+                    protractorVisible ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-orange-50 border border-gray-300'
+                  }`}
+                  title="Úhloměr - Měření úhlů"
+                >
+                  <Gauge size={18}/> Úhloměr
+                </button>
+              </div>
+            </div>
 
-            <button 
-              onClick={undoLast}
-              disabled={!canUndoState}
-              className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              <RotateCcw size={18}/> Zpět
-            </button>
-            <button 
-              onClick={redoLast}
-              disabled={!canRedoState}
-              className="px-3 py-2 rounded bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              <RotateCw size={18}/> Znovu
-            </button>
-            <button onClick={clearAll} className="px-3 py-2 rounded bg-red-500 text-white hover:bg-red-600 flex items-center gap-2">
-              <Trash2 size={18}/> Vymazat
-            </button>
-            <button onClick={saveConstruction} className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700 flex items-center gap-2">
-              <Save size={18}/> Uložit
-            </button>
+            {/* Second Row: History & File Operations */}
+            <div className="flex flex-wrap items-center gap-2.5 p-4 bg-white/30 rounded-b-xl">
+              <button 
+                onClick={undoLast} 
+                disabled={!canUndoState}
+                className="px-3.5 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md"
+                title="Zpět (Ctrl/Cmd + Z)"
+              >
+                <RotateCcw size={16}/> Zpět
+              </button>
+              <button 
+                onClick={redoLast} 
+                disabled={!canRedoState}
+                className="px-3.5 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md"
+                title="Znovu (Ctrl/Cmd + Shift + Z)"
+              >
+                <RotateCw size={16}/> Znovu
+              </button>
+              <button onClick={clearAll} className="px-3.5 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md">
+                <Trash2 size={16}/> Vymazat
+              </button>
+              <button onClick={saveConstruction} className="px-3.5 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-2 transition-all text-sm font-medium shadow-sm hover:shadow-md">
+                <Save size={16}/> Uložit
+              </button>
+            </div>
           </div>
 
           <div 

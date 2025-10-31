@@ -1,4 +1,5 @@
 import { JBoard } from './board-manager'
+import { UndoRedoManager, ModifyOp, BundleOp } from './undo-redo'
 
 type JEl = any;
 
@@ -9,6 +10,7 @@ function dist2(a: { x: number, y: number }, b: { x: number, y: number }) {
 export default class SelectObjectsTool {
   private board: JBoard
   private onFeedback?: ((msg: string) => void) | undefined
+  private undoRedo?: UndoRedoManager | undefined
 
   // Handlers
   private onDown?: ((e: any) => void) | undefined
@@ -38,9 +40,10 @@ export default class SelectObjectsTool {
   private dragStartObjPositions: Map<JEl, any> = new Map();
   private dragTargetObj: JEl | null = null;
 
-  constructor(board: JBoard, onFeedback?: (msg: string) => void) {
+  constructor(board: JBoard, onFeedback?: (msg: string) => void, undoRedo?: UndoRedoManager) {
     this.board = board
     this.onFeedback = onFeedback
+    this.undoRedo = undoRedo
   }
 
   activate() {
@@ -185,43 +188,60 @@ export default class SelectObjectsTool {
         this.dragTargetObj = top;
         // Record each selected's initial world position(s)
         this.dragStartObjPositions.clear();
+        // Collect all point IDs that will be moved, so we can clear their pending moves
+        const pointIdsToClear: string[] = [];
         for (const obj of this.selected) {
           switch (obj.elType) {
             case 'point':
               this.dragStartObjPositions.set(obj, { x: obj.X(), y: obj.Y() });
+              if (obj.id) pointIdsToClear.push(obj.id);
               break;
             case 'line':
             case 'segment':
               // PATCH: Only if points exists and is array
               if (Array.isArray(obj.points)) {
-                this.dragStartObjPositions.set(obj, obj.points.map((pt:any) => ({ x: pt.X(), y: pt.Y() })));
+                this.dragStartObjPositions.set(obj, obj.points.map((pt:any) => {
+                  if (pt && pt.id) pointIdsToClear.push(pt.id);
+                  return { x: pt.X(), y: pt.Y() };
+                }));
               }
               break;
             case 'circle':
-              this.dragStartObjPositions.set(obj, {
-                center: { x: obj.center.X(), y: obj.center.Y() },
-              radius: (typeof obj.R === 'function')
-                ? obj.R()
-                : (() => {
-                    const onPt: any = (obj as any).point2 || (obj as any).points?.[1]
-                    if (onPt && typeof onPt.X === 'function' && typeof onPt.Y === 'function') {
-                      const dx = onPt.X() - obj.center.X()
-                      const dy = onPt.Y() - obj.center.Y()
-                      return Math.hypot(dx, dy)
-                    }
-                    return undefined
-                  })()
-              });
+              {
+                const onPt: any = (obj as any).point2 || (obj as any).points?.[1]
+                const centerPos = { x: obj.center.X(), y: obj.center.Y() };
+                const radiusPtPos = onPt && typeof onPt.X === 'function' && typeof onPt.Y === 'function'
+                  ? { x: onPt.X(), y: onPt.Y() }
+                  : null;
+                if (obj.center && obj.center.id) pointIdsToClear.push(obj.center.id);
+                if (onPt && onPt.id) pointIdsToClear.push(onPt.id);
+                this.dragStartObjPositions.set(obj, {
+                  center: centerPos,
+                  radiusPoint: radiusPtPos,
+                  radius: (typeof obj.R === 'function')
+                    ? obj.R()
+                    : (radiusPtPos ? Math.hypot(radiusPtPos.x - centerPos.x, radiusPtPos.y - centerPos.y) : undefined)
+                });
+              }
               break;
             case 'polygon':
-              this.dragStartObjPositions.set(obj, obj.vertices.map((pt:any) => ({ x: pt.X(), y: pt.Y() })));
+              this.dragStartObjPositions.set(obj, obj.vertices.map((pt:any) => {
+                if (pt && pt.id) pointIdsToClear.push(pt.id);
+                return { x: pt.X(), y: pt.Y() };
+              }));
               break;
             default:
               // Fallback: try to record all .X(), .Y() if any
               if (obj.X && obj.Y) {
                 this.dragStartObjPositions.set(obj, { x: obj.X(), y: obj.Y() });
+                if (obj.id) pointIdsToClear.push(obj.id);
               }
           }
+        }
+        // Mark all points as being group-dragged and clear their pending moves
+        // This prevents individual point tracking from creating separate undo operations
+        if (this.undoRedo && pointIdsToClear.length > 0) {
+          this.undoRedo.markPointsForGroupDrag(pointIdsToClear);
         }
         // PREVENT DEFAULT: don't allow picked object's drag
         if (e?.ev) { e.ev.preventDefault?.(); e.ev.stopPropagation?.(); }
@@ -268,6 +288,157 @@ export default class SelectObjectsTool {
   private handleUp = (e: any) => {
     // End group drag if active
     if (this.isGroupDragging) {
+      // Collect all moved points and create undo operation
+      if (this.undoRedo && this.dragStartObjPositions.size > 0) {
+        const movedPoints = new Map<any, { before: { x: number; y: number; name: string }, after: { x: number; y: number; name: string } }>();
+        
+        // Collect all points that were moved
+        for (const obj of this.selected) {
+          if (obj.visProp?.fixed) continue;
+          
+          const startPos = this.dragStartObjPositions.get(obj);
+          if (!startPos) continue;
+          
+          const posOf = (pt: any) => ({
+            x: pt.X(),
+            y: pt.Y(),
+            name: (pt as any)._rawName || (pt as any).getName?.() || ''
+          });
+          
+          switch (obj.elType) {
+            case 'point':
+              {
+                const before = { x: startPos.x, y: startPos.y, name: posOf(obj).name };
+                const after = posOf(obj);
+                // Only record if actually moved
+                if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                  movedPoints.set(obj.id, { before, after });
+                }
+              }
+              break;
+            case 'line':
+            case 'segment':
+              if (Array.isArray(obj.points) && Array.isArray(startPos)) {
+                obj.points.forEach((pt: any, idx: number) => {
+                  if (!pt || !pt.id) return;
+                  const before = { x: startPos[idx].x, y: startPos[idx].y, name: posOf(pt).name };
+                  const after = posOf(pt);
+                  if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                    movedPoints.set(pt.id, { before, after });
+                  }
+                });
+              }
+              break;
+            case 'circle':
+              {
+                const center = obj.center;
+                if (center && center.id && startPos.center) {
+                  const before = { x: startPos.center.x, y: startPos.center.y, name: posOf(center).name };
+                  const after = posOf(center);
+                  if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                    movedPoints.set(center.id, { before, after });
+                  }
+                }
+                // Also check radius point if it exists
+                const radiusPt: any = (obj as any).point2 || (obj as any).points?.[1];
+                if (radiusPt && radiusPt.id && startPos.radiusPoint) {
+                  const before = { 
+                    x: startPos.radiusPoint.x, 
+                    y: startPos.radiusPoint.y, 
+                    name: posOf(radiusPt).name 
+                  };
+                  const after = posOf(radiusPt);
+                  if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                    movedPoints.set(radiusPt.id, { before, after });
+                  }
+                }
+              }
+              break;
+            case 'polygon':
+              if (Array.isArray(obj.vertices) && Array.isArray(startPos)) {
+                obj.vertices.forEach((pt: any, idx: number) => {
+                  if (!pt || !pt.id) return;
+                  const before = { x: startPos[idx].x, y: startPos[idx].y, name: posOf(pt).name };
+                  const after = posOf(pt);
+                  if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                    movedPoints.set(pt.id, { before, after });
+                  }
+                });
+              }
+              break;
+            default:
+              if (obj.X && obj.Y && obj.id && startPos.x !== undefined && startPos.y !== undefined) {
+                const before = { x: startPos.x, y: startPos.y, name: posOf(obj).name };
+                const after = posOf(obj);
+                if (Math.abs(before.x - after.x) > 0.001 || Math.abs(before.y - after.y) > 0.001 || before.name !== after.name) {
+                  movedPoints.set(obj.id, { before, after });
+                }
+              }
+          }
+        }
+        
+        // Create bundle operation if there are multiple moves, or single operation if only one
+        // Suppress tracking during this operation to prevent duplicate entries
+        if (movedPoints.size > 0 && this.undoRedo) {
+          const undoRedo = this.undoRedo; // Store in local variable for closure
+          const pointIdsMoved = Array.from(movedPoints.keys());
+          
+          // Unmark points from group drag tracking before creating the operation
+          undoRedo.unmarkPointsForGroupDrag(pointIdsMoved);
+          
+          undoRedo.suppressTrackingDuring(() => {
+            const ops: ModifyOp[] = [];
+            movedPoints.forEach(({ before, after }, pointId) => {
+              ops.push({
+                kind: 'modify',
+                pointId,
+                before,
+                after
+              });
+            });
+            
+            if (ops.length === 1 && ops[0]) {
+              undoRedo.pushOperation(ops[0]);
+            } else if (ops.length > 1) {
+              undoRedo.pushOperation({ kind: 'bundle', ops } as BundleOp);
+            }
+          });
+        } else if (this.undoRedo) {
+          // Even if no points moved, unmark them to clean up
+          const pointIdsToUnmark: string[] = [];
+          for (const obj of this.selected) {
+            if (obj.visProp?.fixed) continue;
+            const collectPointIds = (pts: any[]) => {
+              if (Array.isArray(pts)) {
+                pts.forEach((pt: any) => {
+                  if (pt && pt.id) pointIdsToUnmark.push(pt.id);
+                });
+              }
+            };
+            switch (obj.elType) {
+              case 'point':
+                if (obj.id) pointIdsToUnmark.push(obj.id);
+                break;
+              case 'line':
+              case 'segment':
+                collectPointIds(obj.points);
+                break;
+              case 'circle':
+                if (obj.center && obj.center.id) pointIdsToUnmark.push(obj.center.id);
+                const onPt: any = (obj as any).point2 || (obj as any).points?.[1];
+                if (onPt && onPt.id) pointIdsToUnmark.push(onPt.id);
+                break;
+              case 'polygon':
+                collectPointIds(obj.vertices);
+                break;
+            }
+          }
+          if (pointIdsToUnmark.length > 0) {
+            this.undoRedo.unmarkPointsForGroupDrag(pointIdsToUnmark);
+          }
+        }
+      }
+      
       this.isGroupDragging = false;
       this.dragTargetObj = null;
       this.dragStartPointer = null;
@@ -351,7 +522,8 @@ export default class SelectObjectsTool {
         strokeWidth: vp.strokeWidth,
         fillColor: vp.fillColor,
         fillOpacity: vp.fillOpacity,
-        highlight: vp.highlight
+        highlight: vp.highlight,
+        size: vp.size // Save point size for restoration
       })
     }
     this.applySelectedStyle(obj, true)
@@ -370,41 +542,59 @@ export default class SelectObjectsTool {
   }
 
   private applySelectedStyle(obj: JEl, on: boolean) {
-    // GeoGebra-style selection: blue color with increased stroke width
-    const selectedStyle = { 
-      highlight: true, 
-      strokeColor: '#1e88e5',  // GeoGebra blue
-      strokeWidth: 3,
-      fillOpacity: 0.3
-    }
     const saved = this.savedStyle.get(obj)
+    const vp = (obj as any).visProp ?? {}
+    
     if (typeof obj.setProperty === 'function') {
       if (on) {
-        obj.setProperty(selectedStyle)
+        // For points: enlarge them
+        if (obj.elType === 'point') {
+          const originalSize = (saved as any)?.size ?? vp.size ?? 2
+          obj.setProperty({
+            highlight: true,
+            size: Math.max(originalSize * 1.8, 4) // Enlarge point by 80% or minimum 4
+          })
+        } else {
+          // For other objects: keep original color, increase stroke width slightly, add highlight
+          const originalStrokeWidth = (saved as any)?.strokeWidth ?? vp.strokeWidth ?? 1
+          obj.setProperty({
+            highlight: true,
+            strokeWidth: Math.max(originalStrokeWidth * 1.5, originalStrokeWidth + 1)
+          })
+        }
       } else {
+        // Restore original style
         obj.setProperty({
-          strokeColor: (saved as any)?.strokeColor ?? obj.visProp?.strokeColor,
-          strokeWidth: (saved as any)?.strokeWidth ?? obj.visProp?.strokeWidth,
-          fillColor: (saved as any)?.fillColor ?? obj.visProp?.fillColor,
-          fillOpacity: (saved as any)?.fillOpacity ?? obj.visProp?.fillOpacity,
-          highlight: false
+          strokeColor: (saved as any)?.strokeColor ?? vp.strokeColor,
+          strokeWidth: (saved as any)?.strokeWidth ?? vp.strokeWidth,
+          fillColor: (saved as any)?.fillColor ?? vp.fillColor,
+          fillOpacity: (saved as any)?.fillOpacity ?? vp.fillOpacity,
+          highlight: false,
+          size: (saved as any)?.size ?? vp.size
         })
       }
     } else if ((obj as any).visProp) {
       if (on) {
-        (obj as any).visProp.highlight = true
-        ;(obj as any).visProp.strokeColor = '#1e88e5'
-        ;(obj as any).visProp.strokeWidth = 3
-        if (obj.elType === 'circle' || obj.elType === 'polygon') {
-          (obj as any).visProp.fillOpacity = 0.3
+        if (obj.elType === 'point') {
+          // Enlarge point
+          const originalSize = (saved as any)?.size ?? vp.size ?? 2
+          ;(obj as any).visProp.highlight = true
+          ;(obj as any).visProp.size = Math.max(originalSize * 1.8, 4)
+        } else {
+          // Keep original color, increase stroke width slightly, add highlight
+          const originalStrokeWidth = (saved as any)?.strokeWidth ?? vp.strokeWidth ?? 1
+          ;(obj as any).visProp.highlight = true
+          ;(obj as any).visProp.strokeWidth = Math.max(originalStrokeWidth * 1.5, originalStrokeWidth + 1)
         }
       } else {
-        const vp = (obj as any).visProp
-        vp.strokeColor = (saved as any)?.strokeColor ?? vp.strokeColor
-        vp.strokeWidth = (saved as any)?.strokeWidth ?? vp.strokeWidth
-        vp.fillColor = (saved as any)?.fillColor ?? vp.fillColor
-        vp.fillOpacity = (saved as any)?.fillOpacity ?? vp.fillOpacity
-        vp.highlight = false
+        // Restore original style
+        const objVp = (obj as any).visProp
+        objVp.strokeColor = (saved as any)?.strokeColor ?? objVp.strokeColor
+        objVp.strokeWidth = (saved as any)?.strokeWidth ?? objVp.strokeWidth
+        objVp.fillColor = (saved as any)?.fillColor ?? objVp.fillColor
+        objVp.fillOpacity = (saved as any)?.fillOpacity ?? objVp.fillOpacity
+        objVp.highlight = false
+        objVp.size = (saved as any)?.size ?? objVp.size
       }
       obj.update?.()
     }

@@ -57,6 +57,7 @@ export class UndoRedoManager {
   private pendingOps: Operation[] = []
   private suppressTracking = false
   private moveStarts = new Map<string, { x: number; y: number; name: string }>()
+  private groupDraggedPoints = new Set<string>()
   private trackingInterval: NodeJS.Timeout | null = null
   private withinTol(a: number, b: number, tol = this.EPS): boolean { 
     return Math.abs(a - b) <= tol 
@@ -148,6 +149,30 @@ export class UndoRedoManager {
     this.redoStack = []
   }
 
+  public clearPendingMovesForPoints(pointIds: string[]): void {
+    for (const id of pointIds) {
+      this.moveStarts.delete(id)
+    }
+  }
+
+  public markPointsForGroupDrag(pointIds: string[]): void {
+    for (const id of pointIds) {
+      this.groupDraggedPoints.add(id)
+      // Also clear any pending move starts to be safe
+      this.moveStarts.delete(id)
+    }
+  }
+
+  public unmarkPointsForGroupDrag(pointIds: string[]): void {
+    for (const id of pointIds) {
+      this.groupDraggedPoints.delete(id)
+    }
+  }
+
+  public suppressTrackingDuring<T>(fn: () => T): T {
+    return this.withSuppressed(fn)
+  }
+
   public dispose(): void {
     this.moveStarts.clear()
     if (this.trackingInterval) {
@@ -206,6 +231,11 @@ export class UndoRedoManager {
 
     pt.on('up', () => {
       if (this.suppressTracking) return
+      // Skip if this point is being group-dragged (will be handled by group drag handler)
+      if (this.groupDraggedPoints.has(pt.id)) {
+        this.moveStarts.delete(pt.id)
+        return
+      }
       const start = this.moveStarts.get(pt.id)
       if (!start) return
       const end = this.posOf(pt)

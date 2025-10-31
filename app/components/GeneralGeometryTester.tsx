@@ -536,7 +536,7 @@ export default function GeneralGeometryTester() {
     ;(window as any).__renameMgr = renameMgr
 
     // Create SelectObjectsTool
-    selectToolRef.current = new SelectObjectsTool(brd, setFeedback)
+    selectToolRef.current = new SelectObjectsTool(brd, setFeedback, undoRedoRef.current)
 
     // Always forward board 'down' events to drawing handler
     const boardDownHandler = (e: any) => {
@@ -836,7 +836,7 @@ export default function GeneralGeometryTester() {
     const brd = boardManagerRef.current?.getBoard()
     if (!brd) return
     if (!selectToolRef.current) {
-      selectToolRef.current = new SelectObjectsTool(brd, setFeedback)
+      selectToolRef.current = new SelectObjectsTool(brd, setFeedback, undoRedoRef.current || undefined)
     }
     if (tool === 'select') {
       selectToolRef.current.activate()

@@ -97,6 +97,26 @@ class UndoRedoManager {
         this.undoStack = [];
         this.redoStack = [];
     }
+    clearPendingMovesForPoints(pointIds) {
+        for (const id of pointIds){
+            this.moveStarts.delete(id);
+        }
+    }
+    markPointsForGroupDrag(pointIds) {
+        for (const id of pointIds){
+            this.groupDraggedPoints.add(id);
+            // Also clear any pending move starts to be safe
+            this.moveStarts.delete(id);
+        }
+    }
+    unmarkPointsForGroupDrag(pointIds) {
+        for (const id of pointIds){
+            this.groupDraggedPoints.delete(id);
+        }
+    }
+    suppressTrackingDuring(fn) {
+        return this.withSuppressed(fn);
+    }
     dispose() {
         this.moveStarts.clear();
         if (this.trackingInterval) {
@@ -160,6 +180,11 @@ class UndoRedoManager {
         });
         pt.on('up', ()=>{
             if (this.suppressTracking) return;
+            // Skip if this point is being group-dragged (will be handled by group drag handler)
+            if (this.groupDraggedPoints.has(pt.id)) {
+                this.moveStarts.delete(pt.id);
+                return;
+            }
             const start = this.moveStarts.get(pt.id);
             if (!start) return;
             const end = this.posOf(pt);
@@ -926,6 +951,7 @@ class UndoRedoManager {
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "pendingOps", []);
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "suppressTracking", false);
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "moveStarts", new Map());
+        (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "groupDraggedPoints", new Set());
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_define_property$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["_"])(this, "trackingInterval", null);
         this.board = config.board;
         this.onFeedback = config.onFeedback;

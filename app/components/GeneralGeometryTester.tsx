@@ -83,7 +83,7 @@ export default function GeneralGeometryTester() {
   const [triangleVisible, setTriangleVisible] = useState(false)
   const [protractorVisible, setProtractorVisible] = useState(false)
   const [rulerPosition, setRulerPosition] = useState({ x: 0, y: 0, rotation: 0, length: 6 })
-  const [trianglePosition, setTrianglePosition] = useState({ x: 2, y: 0, rotation: 0, size: 3 })
+  const [trianglePosition, setTrianglePosition] = useState({ x: 0, y: 0, rotation: 0, size: 3 })
   const [protractorPosition, setProtractorPosition] = useState({ x: -2, y: 0, rotation: 0, size: 3 })
   const [activeTool, setActiveTool] = useState<'ruler' | 'triangle' | 'protractor' | null>(null)
   const [uiBusy, setUiBusy] = useState(false)
@@ -450,6 +450,8 @@ export default function GeneralGeometryTester() {
   function toggleTriangle() {
     setTriangleVisible(!triangleVisible)
     if (!triangleVisible) {
+      // Always reset triangle to center when showing
+      setTrianglePosition({ x: 0, y: 0, rotation: 0, size: 3 })
       setActiveTool('triangle')
       setTool('mouse') // Automatically switch to mouse mode when activating triangle
     } else if (activeTool === 'triangle') {
@@ -614,7 +616,7 @@ export default function GeneralGeometryTester() {
       const snapshot = exportBoard(brd, {
         gridOption,
         rulerPosition,
-        trianglePosition,
+        // Don't save trianglePosition - always reset to center
         protractorPosition,
         rulerVisible,
         triangleVisible,
@@ -630,7 +632,7 @@ export default function GeneralGeometryTester() {
     }, 5000) // Auto-save every 5 seconds
 
     return () => clearInterval(interval)
-  }, [autoSaveEnabled, createdStack, gridOption, rulerPosition, trianglePosition, protractorPosition, rulerVisible, triangleVisible, protractorVisible])
+  }, [autoSaveEnabled, createdStack, gridOption, rulerPosition, protractorPosition, rulerVisible, triangleVisible, protractorVisible])
 
   // Load from auto-save on mount
   useEffect(() => {
@@ -645,7 +647,7 @@ export default function GeneralGeometryTester() {
           if (data.meta) {
             if (data.meta.gridOption) setGridOption(data.meta.gridOption)
             if (data.meta.rulerPosition) setRulerPosition(data.meta.rulerPosition)
-            if (data.meta.trianglePosition) setTrianglePosition(data.meta.trianglePosition)
+            // Don't load trianglePosition - always start at center
             if (data.meta.protractorPosition) setProtractorPosition(data.meta.protractorPosition)
             if (data.meta.rulerVisible !== undefined) setRulerVisible(data.meta.rulerVisible)
             if (data.meta.triangleVisible !== undefined) setTriangleVisible(data.meta.triangleVisible)
@@ -654,7 +656,7 @@ export default function GeneralGeometryTester() {
           // Backward compatibility: check old format too
           if (data.gridOption) setGridOption(data.gridOption)
           if (data.rulerPosition) setRulerPosition(data.rulerPosition)
-          if (data.trianglePosition) setTrianglePosition(data.trianglePosition)
+          // Don't load trianglePosition - always start at center
           if (data.protractorPosition) setProtractorPosition(data.protractorPosition)
           if (data.rulerVisible !== undefined) setRulerVisible(data.rulerVisible)
           if (data.triangleVisible !== undefined) setTriangleVisible(data.triangleVisible)
@@ -824,7 +826,7 @@ export default function GeneralGeometryTester() {
     // Optional: restore grid and tool positions if present
     if (data.gridOption) setGridOption(data.gridOption)
     if (data.rulerPosition) setRulerPosition(data.rulerPosition)
-    if (data.trianglePosition) setTrianglePosition(data.trianglePosition)
+    // Don't restore trianglePosition - always start at center
     if (data.protractorPosition) setProtractorPosition(data.protractorPosition)
     if (data.rulerVisible !== undefined) setRulerVisible(data.rulerVisible)
     if (data.triangleVisible !== undefined) setTriangleVisible(data.triangleVisible)

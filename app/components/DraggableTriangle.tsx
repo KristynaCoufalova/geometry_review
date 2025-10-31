@@ -71,7 +71,41 @@ export default function DraggableTriangle({
   const boardToScreen = coordinateConverter.boardToScreen
   const screenToBoard = coordinateConverter.screenToBoard
 
-  const screenPos = boardToScreen(x, y)
+  // Calculate screen position with state to ensure it updates after mount
+  const [screenPos, setScreenPos] = useState(() => {
+    const pos = boardToScreen(x, y)
+    // Ensure valid numbers
+    return {
+      x: isNaN(pos.x) ? 0 : pos.x,
+      y: isNaN(pos.y) ? 0 : pos.y
+    }
+  })
+
+  // Update screen position when coordinates or scale changes
+  useEffect(() => {
+    const pos = boardToScreen(x, y)
+    // Ensure valid numbers
+    setScreenPos({
+      x: isNaN(pos.x) ? 0 : pos.x,
+      y: isNaN(pos.y) ? 0 : pos.y
+    })
+  }, [x, y, boardToScreen])
+
+  // Ensure position is recalculated after mount when ref is ready
+  useEffect(() => {
+    // Use a small timeout to ensure the DOM is fully mounted
+    const timeoutId = setTimeout(() => {
+      if (triangleRef.current) {
+        const pos = boardToScreen(x, y)
+        // Ensure valid numbers
+        setScreenPos({
+          x: isNaN(pos.x) ? 0 : pos.x,
+          y: isNaN(pos.y) ? 0 : pos.y
+        })
+      }
+    }, 0)
+    return () => clearTimeout(timeoutId)
+  }, [boardToScreen, x, y])
 
   // Smooth movement without grid snapping
   const smoothPosition = (boardX: number, boardY: number) => {
@@ -289,12 +323,18 @@ export default function DraggableTriangle({
     if (!el) return
     
     const ro = new ResizeObserver(() => {
+      // Recalculate screen position when container resizes
+      const pos = boardToScreen(x, y)
+      setScreenPos({
+        x: isNaN(pos.x) ? 0 : pos.x,
+        y: isNaN(pos.y) ? 0 : pos.y
+      })
       // Force a light refresh by updating dragStart state
       setDragStart(s => ({ ...s }))
     })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [x, y, boardToScreen])
 
   // Generate triangle points based on type
   const getTrianglePoints = () => {
@@ -817,4 +857,3 @@ export default function DraggableTriangle({
     </div>
   )
 }
-

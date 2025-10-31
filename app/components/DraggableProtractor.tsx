@@ -29,7 +29,7 @@ export default function DraggableProtractor({
   const [isResizing, setIsResizing] = useState(false)
   const [isHovering, setIsHovering] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-  const [rotationStart, setRotationStart] = useState({ x: 0, y: 0, rotation: 0 })
+  const [rotationStart, setRotationStart] = useState({ x: 0, y: 0, rotation: 0, initialAngle: 0 })
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, size: 0 })
   const protractorRef = useRef<HTMLDivElement>(null)
   const getScale = useBoardScale(protractorRef)
@@ -66,6 +66,19 @@ export default function DraggableProtractor({
 
   const screenPos = boardToScreen(x, y)
 
+  // Helper functions for rotation with gain
+  const shortestDelta = (a: number, b: number) => {
+    return ((b - a + 540) % 360) - 180
+  }
+
+  const angleDeg = (px: number, py: number, mx: number, my: number) => {
+    return Math.atan2(my - py, mx - px) * 180 / Math.PI
+  }
+
+  const clamp = (v: number, lo: number, hi: number) => {
+    return Math.max(lo, Math.min(hi, v))
+  }
+
   // Smooth movement without grid snapping
   const smoothPosition = (boardX: number, boardY: number) => {
     return { x: boardX, y: boardY }
@@ -80,7 +93,11 @@ export default function DraggableProtractor({
     const target = e.target as HTMLElement
     if (target.classList.contains('rotation-handle')) {
       setIsRotating(true)
-      setRotationStart({ x: e.clientX, y: e.clientY, rotation })
+      // Calculate initial angle from center to mouse position
+      const centerX = screenPos.x
+      const centerY = screenPos.y
+      const initialAngle = angleDeg(centerX, centerY, e.clientX, e.clientY)
+      setRotationStart({ x: e.clientX, y: e.clientY, rotation, initialAngle })
     } else if (target.classList.contains('resize-handle')) {
       setIsResizing(true)
       setResizeStart({ x: e.clientX, y: e.clientY, size })
@@ -102,7 +119,11 @@ export default function DraggableProtractor({
     const target = e.target as HTMLElement
     if (target.classList.contains('rotation-handle')) {
       setIsRotating(true)
-      setRotationStart({ x: touch.clientX, y: touch.clientY, rotation })
+      // Calculate initial angle from center to touch position
+      const centerX = screenPos.x
+      const centerY = screenPos.y
+      const initialAngle = angleDeg(centerX, centerY, touch.clientX, touch.clientY)
+      setRotationStart({ x: touch.clientX, y: touch.clientY, rotation, initialAngle })
     } else if (target.classList.contains('resize-handle')) {
       setIsResizing(true)
       setResizeStart({ x: touch.clientX, y: touch.clientY, size })
@@ -122,12 +143,29 @@ export default function DraggableProtractor({
     } else if (isRotating) {
       const centerX = screenPos.x
       const centerY = screenPos.y
-      const deltaX = e.clientX - centerX
-      const deltaY = e.clientY - centerY
-      const aRaw = Math.atan2(deltaY, deltaX) * 180 / Math.PI
-      const a360 = (aRaw + 360) % 360
-      const snapped = Math.round(a360 / 5) * 5
-      onPositionChange(x, y, snapped, size)
+      
+      // Calculate current angle from center to mouse
+      const currentAngle = angleDeg(centerX, centerY, e.clientX, e.clientY)
+      
+      // Calculate the difference from the initial angle using shortest path
+      const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
+      
+      // Compute radius from center to cursor (in px)
+      const r = Math.hypot(e.clientX - centerX, e.clientY - centerY)
+      
+      // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+      const gain = clamp(120 / (r || 1), 1.2, 3.0)
+      
+      // Apply gain to delta, then add to initial rotation
+      const newRotationRaw = rotationStart.rotation + delta * gain
+      
+      // Snap to 5-degree increments
+      const snapped = Math.round(newRotationRaw / 5) * 5
+      
+      // Normalize to 0-360 range
+      const normalized = ((snapped % 360) + 360) % 360
+      
+      onPositionChange(x, y, normalized, size)
     } else if (isResizing) {
       const deltaX = e.clientX - resizeStart.x
       const deltaY = e.clientY - resizeStart.y
@@ -144,7 +182,7 @@ export default function DraggableProtractor({
       const newSize = Math.max(2, Math.min(6, resizeStart.size + deltaSize))
       onPositionChange(x, y, rotation, newSize)
     }
-  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, screenPos, x, y, rotation, size, onPositionChange])
+  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, rotationStart, screenPos, x, y, rotation, size, onPositionChange])
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     const touch = e.touches[0]
@@ -159,12 +197,29 @@ export default function DraggableProtractor({
     } else if (isRotating) {
       const centerX = screenPos.x
       const centerY = screenPos.y
-      const deltaX = touch.clientX - centerX
-      const deltaY = touch.clientY - centerY
-      const aRaw = Math.atan2(deltaY, deltaX) * 180 / Math.PI
-      const a360 = (aRaw + 360) % 360
-      const snapped = Math.round(a360 / 5) * 5
-      onPositionChange(x, y, snapped, size)
+      
+      // Calculate current angle from center to touch
+      const currentAngle = angleDeg(centerX, centerY, touch.clientX, touch.clientY)
+      
+      // Calculate the difference from the initial angle using shortest path
+      const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
+      
+      // Compute radius from center to cursor (in px)
+      const r = Math.hypot(touch.clientX - centerX, touch.clientY - centerY)
+      
+      // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+      const gain = clamp(120 / (r || 1), 1.2, 3.0)
+      
+      // Apply gain to delta, then add to initial rotation
+      const newRotationRaw = rotationStart.rotation + delta * gain
+      
+      // Snap to 5-degree increments
+      const snapped = Math.round(newRotationRaw / 5) * 5
+      
+      // Normalize to 0-360 range
+      const normalized = ((snapped % 360) + 360) % 360
+      
+      onPositionChange(x, y, normalized, size)
     } else if (isResizing) {
       const deltaX = touch.clientX - resizeStart.x
       const deltaY = touch.clientY - resizeStart.y
@@ -181,7 +236,7 @@ export default function DraggableProtractor({
       const newSize = Math.max(2, Math.min(6, resizeStart.size + deltaSize))
       onPositionChange(x, y, rotation, newSize)
     }
-  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, screenPos, x, y, rotation, size, onPositionChange])
+  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, rotationStart, screenPos, x, y, rotation, size, onPositionChange])
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false)

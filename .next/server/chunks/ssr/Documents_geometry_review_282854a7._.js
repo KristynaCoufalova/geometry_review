@@ -309,8 +309,8 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
             const delta = shortestDelta(rotationStart.initialAngle, currentAngle);
             // Compute radius from center to cursor (in px)
             const r = Math.hypot(e.clientX - centerX, e.clientY - centerY);
-            // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
-            const gain = clamp(200 / (r || 1), 1.2, 3.0);
+            // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+            const gain = clamp(120 / (r || 1), 1.2, 3.0);
             const newRotation = rotationStart.rotation + delta * gain;
             onPositionChange(x, y, newRotation, length);
         } else if (isResizing) {
@@ -360,8 +360,8 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
             const delta = shortestDelta(rotationStart.initialAngle, currentAngle);
             // Compute radius from center to cursor (in px)
             const r = Math.hypot(touch.clientX - centerX, touch.clientY - centerY);
-            // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
-            const gain = clamp(200 / (r || 1), 1.2, 3.0);
+            // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+            const gain = clamp(120 / (r || 1), 1.2, 3.0);
             const newRotation = rotationStart.rotation + delta * gain;
             onPositionChange(x, y, newRotation, length);
         } else if (isResizing) {
@@ -1279,8 +1279,8 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
             const delta = shortestDelta(rotationStart.initialAngle, currentAngle);
             // Compute radius from pivot to cursor (in px)
             const r = Math.hypot(e.clientX - pivot.x, e.clientY - pivot.y);
-            // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
-            const gain = clamp(120 / (r || 1), 1.2, 3.0);
+            // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px THIS CHANGE!!
+            const gain = clamp(40 / (r || 1), 1.2, 3.0);
             const newRotation = rotationStart.rotation + delta * gain;
             onPositionChange(x, y, newRotation, size);
         } else if (isResizing) {
@@ -2484,7 +2484,8 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
     const [rotationStart, setRotationStart] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])({
         x: 0,
         y: 0,
-        rotation: 0
+        rotation: 0,
+        initialAngle: 0
     });
     const [resizeStart, setResizeStart] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])({
         x: 0,
@@ -2523,6 +2524,16 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
         };
     };
     const screenPos = boardToScreen(x, y);
+    // Helper functions for rotation with gain
+    const shortestDelta = (a, b)=>{
+        return (b - a + 540) % 360 - 180;
+    };
+    const angleDeg = (px, py, mx, my)=>{
+        return Math.atan2(my - py, mx - px) * 180 / Math.PI;
+    };
+    const clamp = (v, lo, hi)=>{
+        return Math.max(lo, Math.min(hi, v));
+    };
     // Smooth movement without grid snapping
     const smoothPosition = (boardX, boardY)=>{
         return {
@@ -2538,10 +2549,15 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
         const target = e.target;
         if (target.classList.contains('rotation-handle')) {
             setIsRotating(true);
+            // Calculate initial angle from center to mouse position
+            const centerX = screenPos.x;
+            const centerY = screenPos.y;
+            const initialAngle = angleDeg(centerX, centerY, e.clientX, e.clientY);
             setRotationStart({
                 x: e.clientX,
                 y: e.clientY,
-                rotation
+                rotation,
+                initialAngle
             });
         } else if (target.classList.contains('resize-handle')) {
             setIsResizing(true);
@@ -2568,10 +2584,15 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
         const target = e.target;
         if (target.classList.contains('rotation-handle')) {
             setIsRotating(true);
+            // Calculate initial angle from center to touch position
+            const centerX = screenPos.x;
+            const centerY = screenPos.y;
+            const initialAngle = angleDeg(centerX, centerY, touch.clientX, touch.clientY);
             setRotationStart({
                 x: touch.clientX,
                 y: touch.clientY,
-                rotation
+                rotation,
+                initialAngle
             });
         } else if (target.classList.contains('resize-handle')) {
             setIsResizing(true);
@@ -2598,12 +2619,21 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
         } else if (isRotating) {
             const centerX = screenPos.x;
             const centerY = screenPos.y;
-            const deltaX = e.clientX - centerX;
-            const deltaY = e.clientY - centerY;
-            const aRaw = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
-            const a360 = (aRaw + 360) % 360;
-            const snapped = Math.round(a360 / 5) * 5;
-            onPositionChange(x, y, snapped, size);
+            // Calculate current angle from center to mouse
+            const currentAngle = angleDeg(centerX, centerY, e.clientX, e.clientY);
+            // Calculate the difference from the initial angle using shortest path
+            const delta = shortestDelta(rotationStart.initialAngle, currentAngle);
+            // Compute radius from center to cursor (in px)
+            const r = Math.hypot(e.clientX - centerX, e.clientY - centerY);
+            // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+            const gain = clamp(120 / (r || 1), 1.2, 3.0);
+            // Apply gain to delta, then add to initial rotation
+            const newRotationRaw = rotationStart.rotation + delta * gain;
+            // Snap to 5-degree increments
+            const snapped = Math.round(newRotationRaw / 5) * 5;
+            // Normalize to 0-360 range
+            const normalized = (snapped % 360 + 360) % 360;
+            onPositionChange(x, y, normalized, size);
         } else if (isResizing) {
             const deltaX = e.clientX - resizeStart.x;
             const deltaY = e.clientY - resizeStart.y;
@@ -2624,6 +2654,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
         isResizing,
         dragStart,
         resizeStart,
+        rotationStart,
         screenPos,
         x,
         y,
@@ -2643,12 +2674,21 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
         } else if (isRotating) {
             const centerX = screenPos.x;
             const centerY = screenPos.y;
-            const deltaX = touch.clientX - centerX;
-            const deltaY = touch.clientY - centerY;
-            const aRaw = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
-            const a360 = (aRaw + 360) % 360;
-            const snapped = Math.round(a360 / 5) * 5;
-            onPositionChange(x, y, snapped, size);
+            // Calculate current angle from center to touch
+            const currentAngle = angleDeg(centerX, centerY, touch.clientX, touch.clientY);
+            // Calculate the difference from the initial angle using shortest path
+            const delta = shortestDelta(rotationStart.initialAngle, currentAngle);
+            // Compute radius from center to cursor (in px)
+            const r = Math.hypot(touch.clientX - centerX, touch.clientY - centerY);
+            // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+            const gain = clamp(120 / (r || 1), 1.2, 3.0);
+            // Apply gain to delta, then add to initial rotation
+            const newRotationRaw = rotationStart.rotation + delta * gain;
+            // Snap to 5-degree increments
+            const snapped = Math.round(newRotationRaw / 5) * 5;
+            // Normalize to 0-360 range
+            const normalized = (snapped % 360 + 360) % 360;
+            onPositionChange(x, y, normalized, size);
         } else if (isResizing) {
             const deltaX = touch.clientX - resizeStart.x;
             const deltaY = touch.clientY - resizeStart.y;
@@ -2669,6 +2709,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
         isResizing,
         dragStart,
         resizeStart,
+        rotationStart,
         screenPos,
         x,
         y,
@@ -2794,7 +2835,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                 strokeWidth: strokeWidth
             }, `mark-${angle}`, false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                lineNumber: 288,
+                lineNumber: 343,
                 columnNumber: 9
             }, this));
             // Add degree labels for every 10 degrees
@@ -2818,7 +2859,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                     ]
                 }, `label-${angle}`, true, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                    lineNumber: 306,
+                    lineNumber: 361,
                     columnNumber: 11
                 }, this));
             }
@@ -2871,12 +2912,12 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                                         floodOpacity: "0.15"
                                     }, void 0, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                        lineNumber: 356,
+                                        lineNumber: 411,
                                         columnNumber: 15
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                    lineNumber: 355,
+                                    lineNumber: 410,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("mask", {
@@ -2888,7 +2929,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                                             fill: "white"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                            lineNumber: 359,
+                                            lineNumber: 414,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -2899,19 +2940,19 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                                             fill: "black"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                            lineNumber: 361,
+                                            lineNumber: 416,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                                    lineNumber: 358,
+                                    lineNumber: 413,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 354,
+                            lineNumber: 409,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2920,7 +2961,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                             stroke: "none"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 372,
+                            lineNumber: 427,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -2931,7 +2972,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                             fill: "rgba(107,114,128,0.22)"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 379,
+                            lineNumber: 434,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2943,7 +2984,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                             filter: "url(#protractorShadow)"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 388,
+                            lineNumber: 443,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
@@ -2956,7 +2997,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                             strokeLinecap: "round"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 391,
+                            lineNumber: 446,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
@@ -2969,7 +3010,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                             strokeLinecap: "round"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 395,
+                            lineNumber: 450,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2980,7 +3021,7 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                             mask: `url(#innerArcMask-${uid})`
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 399,
+                            lineNumber: 454,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("circle", {
@@ -2993,14 +3034,14 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                             filter: "url(#protractorShadow)"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                            lineNumber: 403,
+                            lineNumber: 458,
                             columnNumber: 11
                         }, this),
                         generateMarkings()
                     ]
                 }, void 0, true, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                    lineNumber: 343,
+                    lineNumber: 398,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3019,12 +3060,12 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                         className: "w-2 h-2 bg-emerald-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                        lineNumber: 424,
+                        lineNumber: 479,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                    lineNumber: 411,
+                    lineNumber: 466,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3043,23 +3084,23 @@ function DraggableProtractor({ x, y, rotation, size, onPositionChange, isActive,
                         className: "w-2 h-2 bg-amber-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                        lineNumber: 441,
+                        lineNumber: 496,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-                    lineNumber: 428,
+                    lineNumber: 483,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-            lineNumber: 342,
+            lineNumber: 397,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/Documents/geometry_review/app/components/DraggableProtractor.tsx",
-        lineNumber: 327,
+        lineNumber: 382,
         columnNumber: 5
     }, this);
 }

@@ -158,8 +158,8 @@ export default function DraggableRuler({
       // Compute radius from center to cursor (in px)
       const r = Math.hypot(e.clientX - centerX, e.clientY - centerY)
       
-      // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
-      const gain = clamp(200 / (r || 1), 1.2, 3.0)
+      // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+      const gain = clamp(120 / (r || 1), 1.2, 3.0)
       
       const newRotation = rotationStart.rotation + delta * gain
       onPositionChange(x, y, newRotation, length)
@@ -204,8 +204,8 @@ export default function DraggableRuler({
       // Compute radius from center to cursor (in px)
       const r = Math.hypot(touch.clientX - centerX, touch.clientY - centerY)
       
-      // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
-      const gain = clamp(200 / (r || 1), 1.2, 3.0)
+      // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+      const gain = clamp(120 / (r || 1), 1.2, 3.0)
       
       const newRotation = rotationStart.rotation + delta * gain
       onPositionChange(x, y, newRotation, length)

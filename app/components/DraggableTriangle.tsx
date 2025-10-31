@@ -209,7 +209,7 @@ export default function DraggableTriangle({
       const r = Math.hypot(e.clientX - pivot.x, e.clientY - pivot.y)
       
       // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px THIS CHANGE!!
-      const gain = clamp(120 / (r || 1), 1.2, 3.0)
+      const gain = clamp(40 / (r || 1), 1.2, 3.0)
       
       const newRotation = rotationStart.rotation + delta * gain
       onPositionChange(x, y, newRotation, size)

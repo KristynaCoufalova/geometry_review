@@ -207,6 +207,16 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
     ]);
     const boardToScreen = coordinateConverter.boardToScreen;
     const screenToBoard = coordinateConverter.screenToBoard;
+    // Helper functions for rotation with gain
+    const shortestDelta = (a, b)=>{
+        return (b - a + 540) % 360 - 180;
+    };
+    const angleDeg = (px, py, mx, my)=>{
+        return Math.atan2(my - py, mx - px) * 180 / Math.PI;
+    };
+    const clamp = (v, lo, hi)=>{
+        return Math.max(lo, Math.min(hi, v));
+    };
     const screenPos = boardToScreen(x, y);
     // Smooth movement without grid snapping
     const smoothPosition = (boardX, boardY)=>{
@@ -294,13 +304,14 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
             const centerX = screenPos.x;
             const centerY = screenPos.y;
             // Calculate current angle from center to mouse
-            const currentAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
-            // Calculate the difference from the initial angle
-            let deltaAngle = currentAngle - rotationStart.initialAngle;
-            // Handle angle wrapping (ensure we take the shorter path)
-            while(deltaAngle > 180)deltaAngle -= 360;
-            while(deltaAngle < -180)deltaAngle += 360;
-            const newRotation = rotationStart.rotation + deltaAngle;
+            const currentAngle = angleDeg(centerX, centerY, e.clientX, e.clientY);
+            // Calculate the difference from the initial angle using shortest path
+            const delta = shortestDelta(rotationStart.initialAngle, currentAngle);
+            // Compute radius from center to cursor (in px)
+            const r = Math.hypot(e.clientX - centerX, e.clientY - centerY);
+            // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
+            const gain = clamp(200 / (r || 1), 1.2, 3.0);
+            const newRotation = rotationStart.rotation + delta * gain;
             onPositionChange(x, y, newRotation, length);
         } else if (isResizing) {
             const deltaX = e.clientX - resizeStart.x;
@@ -344,13 +355,14 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
             const centerX = screenPos.x;
             const centerY = screenPos.y;
             // Calculate current angle from center to touch
-            const currentAngle = Math.atan2(touch.clientY - centerY, touch.clientX - centerX) * (180 / Math.PI);
-            // Calculate the difference from the initial angle
-            let deltaAngle = currentAngle - rotationStart.initialAngle;
-            // Handle angle wrapping (ensure we take the shorter path)
-            while(deltaAngle > 180)deltaAngle -= 360;
-            while(deltaAngle < -180)deltaAngle += 360;
-            const newRotation = rotationStart.rotation + deltaAngle;
+            const currentAngle = angleDeg(centerX, centerY, touch.clientX, touch.clientY);
+            // Calculate the difference from the initial angle using shortest path
+            const delta = shortestDelta(rotationStart.initialAngle, currentAngle);
+            // Compute radius from center to cursor (in px)
+            const r = Math.hypot(touch.clientX - centerX, touch.clientY - centerY);
+            // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
+            const gain = clamp(200 / (r || 1), 1.2, 3.0);
+            const newRotation = rotationStart.rotation + delta * gain;
             onPositionChange(x, y, newRotation, length);
         } else if (isResizing) {
             const deltaX = touch.clientX - resizeStart.x;
@@ -470,7 +482,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                 }
             }, `mark-${i}`, false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                lineNumber: 282,
+                lineNumber: 299,
                 columnNumber: 9
             }, this));
             // Add labels for major marks (every 1 unit)
@@ -486,7 +498,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                     children: unitValue
                 }, `label-${i}`, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                    lineNumber: 297,
+                    lineNumber: 314,
                     columnNumber: 11
                 }, this));
             }
@@ -536,7 +548,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(255,255,255,0.6)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 342,
+                                            lineNumber: 359,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -544,7 +556,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(255,255,255,0.4)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 343,
+                                            lineNumber: 360,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -552,7 +564,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(255,255,255,0.2)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 344,
+                                            lineNumber: 361,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -560,7 +572,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(240,245,250,0.1)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 345,
+                                            lineNumber: 362,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -568,7 +580,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(200,210,220,0.15)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 346,
+                                            lineNumber: 363,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -576,7 +588,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(150,160,170,0.2)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 347,
+                                            lineNumber: 364,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -584,13 +596,13 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(100,110,120,0.25)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 348,
+                                            lineNumber: 365,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 341,
+                                    lineNumber: 358,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("linearGradient", {
@@ -605,7 +617,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(255,255,255,0.8)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 353,
+                                            lineNumber: 370,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -613,7 +625,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(255,255,255,0.4)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 354,
+                                            lineNumber: 371,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -621,7 +633,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(255,255,255,0.1)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 355,
+                                            lineNumber: 372,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -629,13 +641,13 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(255,255,255,0)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 356,
+                                            lineNumber: 373,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 352,
+                                    lineNumber: 369,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("linearGradient", {
@@ -650,7 +662,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(0,0,0,0)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 361,
+                                            lineNumber: 378,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -658,7 +670,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(0,0,0,0.05)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 362,
+                                            lineNumber: 379,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -666,13 +678,13 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             stopColor: "rgba(0,0,0,0.15)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 363,
+                                            lineNumber: 380,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 360,
+                                    lineNumber: 377,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -690,7 +702,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             floodOpacity: "0.3"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 368,
+                                            lineNumber: 385,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feDropShadow", {
@@ -701,7 +713,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             floodOpacity: "0.2"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 369,
+                                            lineNumber: 386,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feDropShadow", {
@@ -712,13 +724,13 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             floodOpacity: "0.1"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 370,
+                                            lineNumber: 387,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 367,
+                                    lineNumber: 384,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -733,7 +745,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             result: "coloredBlur"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 375,
+                                            lineNumber: 392,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feMerge", {
@@ -742,32 +754,32 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                                     in: "coloredBlur"
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                                    lineNumber: 377,
+                                                    lineNumber: 394,
                                                     columnNumber: 17
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feMergeNode", {
                                                     in: "SourceGraphic"
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                                    lineNumber: 378,
+                                                    lineNumber: 395,
                                                     columnNumber: 17
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 376,
+                                            lineNumber: 393,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 374,
+                                    lineNumber: 391,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                            lineNumber: 339,
+                            lineNumber: 356,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("g", {
@@ -781,7 +793,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                     fill: "rgba(240,245,250,0.25)"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 386,
+                                    lineNumber: 403,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -792,7 +804,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                     fill: "url(#rulerShadowGradient)"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 388,
+                                    lineNumber: 405,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -803,7 +815,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                     fill: "url(#rulerPlasticGradient)"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 390,
+                                    lineNumber: 407,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -814,7 +826,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                     fill: "url(#rulerHighlightGradient)"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 392,
+                                    lineNumber: 409,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("rect", {
@@ -827,13 +839,13 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                     strokeWidth: "1.2"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 394,
+                                    lineNumber: 411,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                            lineNumber: 384,
+                            lineNumber: 401,
                             columnNumber: 11
                         }, this),
                         (()=>{
@@ -855,7 +867,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                     fill: "#000"
                                 }, `cm-${cm}`, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 412,
+                                    lineNumber: 429,
                                     columnNumber: 17
                                 }, this));
                                 // Millimeter marks (9 small ticks between each centimeter)
@@ -873,7 +885,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                             opacity: "0.75"
                                         }, `mm-${cm}-${mm}`, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                            lineNumber: 429,
+                                            lineNumber: 446,
                                             columnNumber: 21
                                         }, this));
                                     }
@@ -897,7 +909,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                         opacity: "0.75"
                                     }, `mm-final-${mm}`, false, {
                                         fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                        lineNumber: 454,
+                                        lineNumber: 471,
                                         columnNumber: 19
                                     }, this));
                                 }
@@ -910,7 +922,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                                     fill: "#000"
                                 }, `cm-final`, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                                    lineNumber: 468,
+                                    lineNumber: 485,
                                     columnNumber: 17
                                 }, this));
                             }
@@ -919,7 +931,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                     ]
                 }, void 0, true, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                    lineNumber: 333,
+                    lineNumber: 350,
                     columnNumber: 9
                 }, this),
                 (()=>{
@@ -943,7 +955,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                             children: cm
                         }, `ruler-number-${cm}`, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                            lineNumber: 494,
+                            lineNumber: 511,
                             columnNumber: 15
                         }, this));
                     }
@@ -964,7 +976,7 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                             children: length.toFixed(1)
                         }, `ruler-number-final`, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                            lineNumber: 516,
+                            lineNumber: 533,
                             columnNumber: 15
                         }, this));
                     }
@@ -986,12 +998,12 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                         className: "w-2 h-2 bg-emerald-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                        lineNumber: 551,
+                        lineNumber: 568,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                    lineNumber: 538,
+                    lineNumber: 555,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1010,23 +1022,23 @@ function DraggableRuler({ x, y, rotation, length, onPositionChange, isActive, on
                         className: "w-2 h-2 bg-amber-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                        lineNumber: 568,
+                        lineNumber: 585,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-                    lineNumber: 555,
+                    lineNumber: 572,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-            lineNumber: 332,
+            lineNumber: 349,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/Documents/geometry_review/app/components/DraggableRuler.tsx",
-        lineNumber: 317,
+        lineNumber: 334,
         columnNumber: 5
     }, this);
 }
@@ -1109,6 +1121,16 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
     ]);
     const boardToScreen = coordinateConverter.boardToScreen;
     const screenToBoard = coordinateConverter.screenToBoard;
+    // Helper functions for rotation with gain
+    const shortestDelta = (a, b)=>{
+        return (b - a + 540) % 360 - 180;
+    };
+    const angleDeg = (px, py, mx, my)=>{
+        return Math.atan2(my - py, mx - px) * 180 / Math.PI;
+    };
+    const clamp = (v, lo, hi)=>{
+        return Math.max(lo, Math.min(hi, v));
+    };
     // Calculate screen position with state to ensure it updates after mount
     const [screenPos, setScreenPos] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(()=>{
         const pos = boardToScreen(x, y);
@@ -1251,16 +1273,15 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
         } else if (isRotating) {
             // Use the pivot (right-angle vertex) in screen coords
             const pivot = boardToScreen(x, y);
-            const pivotX = pivot.x;
-            const pivotY = pivot.y;
             // Calculate current angle from pivot to mouse
-            const currentAngle = Math.atan2(e.clientY - pivotY, e.clientX - pivotX) * (180 / Math.PI);
-            // Calculate the difference from the initial angle
-            let deltaAngle = currentAngle - rotationStart.initialAngle;
-            // Handle angle wrapping (ensure we take the shorter path)
-            while(deltaAngle > 180)deltaAngle -= 360;
-            while(deltaAngle < -180)deltaAngle += 360;
-            const newRotation = rotationStart.rotation + deltaAngle;
+            const currentAngle = angleDeg(pivot.x, pivot.y, e.clientX, e.clientY);
+            // Calculate the difference from the initial angle using shortest path
+            const delta = shortestDelta(rotationStart.initialAngle, currentAngle);
+            // Compute radius from pivot to cursor (in px)
+            const r = Math.hypot(e.clientX - pivot.x, e.clientY - pivot.y);
+            // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
+            const gain = clamp(120 / (r || 1), 1.2, 3.0);
+            const newRotation = rotationStart.rotation + delta * gain;
             onPositionChange(x, y, newRotation, size);
         } else if (isResizing) {
             const deltaX = e.clientX - resizeStart.x;
@@ -1315,16 +1336,15 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
         } else if (isRotating) {
             // Use the pivot (right-angle vertex) in screen coords
             const pivot = boardToScreen(x, y);
-            const pivotX = pivot.x;
-            const pivotY = pivot.y;
             // Calculate current angle from pivot to touch
-            const currentAngle = Math.atan2(touch.clientY - pivotY, touch.clientX - pivotX) * (180 / Math.PI);
-            // Calculate the difference from the initial angle
-            let deltaAngle = currentAngle - rotationStart.initialAngle;
-            // Handle angle wrapping (ensure we take the shorter path)
-            while(deltaAngle > 180)deltaAngle -= 360;
-            while(deltaAngle < -180)deltaAngle += 360;
-            const newRotation = rotationStart.rotation + deltaAngle;
+            const currentAngle = angleDeg(pivot.x, pivot.y, touch.clientX, touch.clientY);
+            // Calculate the difference from the initial angle using shortest path
+            const delta = shortestDelta(rotationStart.initialAngle, currentAngle);
+            // Compute radius from pivot to cursor (in px)
+            const r = Math.hypot(touch.clientX - pivot.x, touch.clientY - pivot.y);
+            // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
+            const gain = clamp(200 / (r || 1), 1.2, 3.0);
+            const newRotation = rotationStart.rotation + delta * gain;
             onPositionChange(x, y, newRotation, size);
         } else if (isResizing) {
             const deltaX = touch.clientX - resizeStart.x;
@@ -1496,7 +1516,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                 fill: "#000"
             }, `h-cm-${cm}`, false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                lineNumber: 383,
+                lineNumber: 396,
                 columnNumber: 9
             }, this));
             // Number labels will be handled separately as HTML elements
@@ -1515,7 +1535,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                         opacity: "0.75"
                     }, `h-mm-${cm}-${mm}`, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                        lineNumber: 402,
+                        lineNumber: 415,
                         columnNumber: 13
                     }, this));
                 }
@@ -1539,7 +1559,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                     opacity: "0.75"
                 }, `h-mm-final-${mm}`, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 427,
+                    lineNumber: 440,
                     columnNumber: 11
                 }, this));
             }
@@ -1552,7 +1572,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                 fill: "#000"
             }, `h-cm-final`, false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                lineNumber: 441,
+                lineNumber: 454,
                 columnNumber: 9
             }, this));
         }
@@ -1572,7 +1592,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                 fill: "#000"
             }, `v-cm-${cm}`, false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                lineNumber: 461,
+                lineNumber: 474,
                 columnNumber: 9
             }, this));
             // No number labels on the vertical ruler (left side)
@@ -1591,7 +1611,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                         opacity: "0.75"
                     }, `v-mm-${cm}-${mm}`, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                        lineNumber: 480,
+                        lineNumber: 493,
                         columnNumber: 13
                     }, this));
                 }
@@ -1616,7 +1636,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                     opacity: "0.75"
                 }, `v-mm-final-${mm}`, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 506,
+                    lineNumber: 519,
                     columnNumber: 11
                 }, this));
             }
@@ -1629,7 +1649,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                 fill: "#000"
             }, `v-cm-final`, false, {
                 fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                lineNumber: 520,
+                lineNumber: 533,
                 columnNumber: 9
             }, this));
         }
@@ -1645,7 +1665,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                     children: "0"
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 534,
+                    lineNumber: 547,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("g", {
@@ -1653,7 +1673,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                     children: horizontalTicks
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 537,
+                    lineNumber: 550,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("g", {
@@ -1661,13 +1681,13 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                     children: verticalTicks
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 542,
+                    lineNumber: 555,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-            lineNumber: 532,
+            lineNumber: 545,
             columnNumber: 7
         }, this);
     };
@@ -1797,7 +1817,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(255,255,255,0.6)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 650,
+                                            lineNumber: 663,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1805,7 +1825,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(255,255,255,0.4)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 651,
+                                            lineNumber: 664,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1813,7 +1833,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(255,255,255,0.2)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 652,
+                                            lineNumber: 665,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1821,7 +1841,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(240,245,250,0.1)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 653,
+                                            lineNumber: 666,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1829,7 +1849,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(200,210,220,0.15)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 654,
+                                            lineNumber: 667,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1837,7 +1857,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(150,160,170,0.2)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 655,
+                                            lineNumber: 668,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1845,13 +1865,13 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(100,110,120,0.25)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 656,
+                                            lineNumber: 669,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 649,
+                                    lineNumber: 662,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("linearGradient", {
@@ -1866,7 +1886,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(255,255,255,0.8)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 661,
+                                            lineNumber: 674,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1874,7 +1894,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(255,255,255,0.4)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 662,
+                                            lineNumber: 675,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1882,7 +1902,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(255,255,255,0.1)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 663,
+                                            lineNumber: 676,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1890,13 +1910,13 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(255,255,255,0)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 664,
+                                            lineNumber: 677,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 660,
+                                    lineNumber: 673,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("linearGradient", {
@@ -1911,7 +1931,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(0,0,0,0)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 669,
+                                            lineNumber: 682,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1919,7 +1939,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(0,0,0,0.05)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 670,
+                                            lineNumber: 683,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("stop", {
@@ -1927,13 +1947,13 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             stopColor: "rgba(0,0,0,0.15)"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 671,
+                                            lineNumber: 684,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 668,
+                                    lineNumber: 681,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -1951,7 +1971,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             floodOpacity: "0.3"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 676,
+                                            lineNumber: 689,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feDropShadow", {
@@ -1962,7 +1982,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             floodOpacity: "0.2"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 677,
+                                            lineNumber: 690,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feDropShadow", {
@@ -1973,13 +1993,13 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             floodOpacity: "0.1"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 678,
+                                            lineNumber: 691,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 675,
+                                    lineNumber: 688,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -1995,7 +2015,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             result: "flood"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 683,
+                                            lineNumber: 696,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feComposite", {
@@ -2005,7 +2025,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             result: "composite"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 684,
+                                            lineNumber: 697,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feGaussianBlur", {
@@ -2014,7 +2034,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             result: "blur"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 685,
+                                            lineNumber: 698,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feOffset", {
@@ -2024,7 +2044,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             result: "offset"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 686,
+                                            lineNumber: 699,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feComposite", {
@@ -2033,13 +2053,13 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             operator: "over"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 687,
+                                            lineNumber: 700,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 682,
+                                    lineNumber: 695,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -2055,7 +2075,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             result: "flood"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 692,
+                                            lineNumber: 705,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feComposite", {
@@ -2065,7 +2085,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             result: "composite"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 693,
+                                            lineNumber: 706,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feGaussianBlur", {
@@ -2074,7 +2094,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             result: "blur"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 694,
+                                            lineNumber: 707,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feOffset", {
@@ -2084,7 +2104,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             result: "offset"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 695,
+                                            lineNumber: 708,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feComposite", {
@@ -2093,13 +2113,13 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             operator: "over"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 696,
+                                            lineNumber: 709,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 691,
+                                    lineNumber: 704,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("filter", {
@@ -2114,7 +2134,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             result: "coloredBlur"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 701,
+                                            lineNumber: 714,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feMerge", {
@@ -2123,26 +2143,26 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                                     in: "coloredBlur"
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                                    lineNumber: 703,
+                                                    lineNumber: 716,
                                                     columnNumber: 17
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("feMergeNode", {
                                                     in: "SourceGraphic"
                                                 }, void 0, false, {
                                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                                    lineNumber: 704,
+                                                    lineNumber: 717,
                                                     columnNumber: 17
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 702,
+                                            lineNumber: 715,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 700,
+                                    lineNumber: 713,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("mask", {
@@ -2153,7 +2173,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             fill: "white"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 711,
+                                            lineNumber: 724,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2161,7 +2181,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             fill: "black"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 713,
+                                            lineNumber: 726,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2169,19 +2189,19 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                             fill: "black"
                                         }, void 0, false, {
                                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                            lineNumber: 714,
+                                            lineNumber: 727,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 709,
+                                    lineNumber: 722,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 647,
+                            lineNumber: 660,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("g", {
@@ -2193,7 +2213,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                     mask: `url(#triangle-mask-${type})`
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 721,
+                                    lineNumber: 734,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2202,7 +2222,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                     mask: `url(#triangle-mask-${type})`
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 723,
+                                    lineNumber: 736,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2211,7 +2231,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                     mask: `url(#triangle-mask-${type})`
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 725,
+                                    lineNumber: 738,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2220,7 +2240,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                     mask: `url(#triangle-mask-${type})`
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 727,
+                                    lineNumber: 740,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2230,13 +2250,13 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                                     strokeWidth: "2.5"
                                 }, void 0, false, {
                                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                                    lineNumber: 729,
+                                    lineNumber: 742,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 719,
+                            lineNumber: 732,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("line", {
@@ -2249,7 +2269,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                             strokeDasharray: "4 3"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 733,
+                            lineNumber: 746,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2260,7 +2280,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                             strokeLinecap: "round"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 744,
+                            lineNumber: 757,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("text", {
@@ -2273,28 +2293,6 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                             children: "90°"
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 753,
-                            columnNumber: 11
-                        }, this),
-                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
-                            d: cut1,
-                            fill: "none",
-                            stroke: "#000000",
-                            strokeWidth: "1.2",
-                            filter: `url(#deepInnerShadow-${type})`
-                        }, void 0, false, {
-                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 765,
-                            columnNumber: 11
-                        }, this),
-                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
-                            d: cut2,
-                            fill: "none",
-                            stroke: "#000000",
-                            strokeWidth: "1.2",
-                            filter: `url(#deepInnerShadow-${type})`
-                        }, void 0, false, {
-                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
                             lineNumber: 766,
                             columnNumber: 11
                         }, this),
@@ -2303,10 +2301,32 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                             fill: "none",
                             stroke: "#000000",
                             strokeWidth: "1.2",
+                            filter: `url(#deepInnerShadow-${type})`
+                        }, void 0, false, {
+                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
+                            lineNumber: 778,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
+                            d: cut2,
+                            fill: "none",
+                            stroke: "#000000",
+                            strokeWidth: "1.2",
+                            filter: `url(#deepInnerShadow-${type})`
+                        }, void 0, false, {
+                            fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
+                            lineNumber: 779,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
+                            d: cut1,
+                            fill: "none",
+                            stroke: "#000000",
+                            strokeWidth: "1.2",
                             filter: `url(#innerShadow-${type})`
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 768,
+                            lineNumber: 781,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
@@ -2317,14 +2337,14 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                             filter: `url(#innerShadow-${type})`
                         }, void 0, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 769,
+                            lineNumber: 782,
                             columnNumber: 11
                         }, this),
                         renderRulerMarkingsSvg()
                     ]
                 }, void 0, true, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 641,
+                    lineNumber: 654,
                     columnNumber: 9
                 }, this),
                 (()=>{
@@ -2350,7 +2370,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                             children: cm
                         }, `h-number-${cm}`, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 786,
+                            lineNumber: 799,
                             columnNumber: 15
                         }, this));
                     }
@@ -2371,7 +2391,7 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                             children: size.toFixed(1)
                         }, `h-number-final`, false, {
                             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                            lineNumber: 808,
+                            lineNumber: 821,
                             columnNumber: 15
                         }, this));
                     }
@@ -2393,12 +2413,12 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                         className: "w-2 h-2 bg-emerald-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                        lineNumber: 843,
+                        lineNumber: 856,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 830,
+                    lineNumber: 843,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$Documents$2f$geometry_review$2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2417,23 +2437,23 @@ function DraggableTriangle({ x, y, rotation, size, type, onPositionChange, isAct
                         className: "w-2 h-2 bg-amber-500 rounded-full"
                     }, void 0, false, {
                         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                        lineNumber: 860,
+                        lineNumber: 873,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-                    lineNumber: 847,
+                    lineNumber: 860,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-            lineNumber: 640,
+            lineNumber: 653,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/Documents/geometry_review/app/components/DraggableTriangle.tsx",
-        lineNumber: 620,
+        lineNumber: 633,
         columnNumber: 5
     }, this);
 }

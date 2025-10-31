@@ -75,6 +75,19 @@ export default function DraggableTriangle({
   const boardToScreen = coordinateConverter.boardToScreen
   const screenToBoard = coordinateConverter.screenToBoard
 
+  // Helper functions for rotation with gain
+  const shortestDelta = (a: number, b: number) => {
+    return ((b - a + 540) % 360) - 180
+  }
+
+  const angleDeg = (px: number, py: number, mx: number, my: number) => {
+    return Math.atan2(my - py, mx - px) * 180 / Math.PI
+  }
+
+  const clamp = (v: number, lo: number, hi: number) => {
+    return Math.max(lo, Math.min(hi, v))
+  }
+
   // Calculate screen position with state to ensure it updates after mount
   const [screenPos, setScreenPos] = useState(() => {
     const pos = boardToScreen(x, y)
@@ -185,20 +198,20 @@ export default function DraggableTriangle({
     } else if (isRotating) {
       // Use the pivot (right-angle vertex) in screen coords
       const pivot = boardToScreen(x, y)
-      const pivotX = pivot.x
-      const pivotY = pivot.y
       
       // Calculate current angle from pivot to mouse
-      const currentAngle = Math.atan2(e.clientY - pivotY, e.clientX - pivotX) * (180 / Math.PI)
+      const currentAngle = angleDeg(pivot.x, pivot.y, e.clientX, e.clientY)
       
-      // Calculate the difference from the initial angle
-      let deltaAngle = currentAngle - rotationStart.initialAngle
+      // Calculate the difference from the initial angle using shortest path
+      const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
       
-      // Handle angle wrapping (ensure we take the shorter path)
-      while (deltaAngle > 180) deltaAngle -= 360
-      while (deltaAngle < -180) deltaAngle += 360
+      // Compute radius from pivot to cursor (in px)
+      const r = Math.hypot(e.clientX - pivot.x, e.clientY - pivot.y)
       
-      const newRotation = rotationStart.rotation + deltaAngle
+      // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px THIS CHANGE!!
+      const gain = clamp(120 / (r || 1), 1.2, 3.0)
+      
+      const newRotation = rotationStart.rotation + delta * gain
       onPositionChange(x, y, newRotation, size)
     } else if (isResizing) {
       const deltaX = e.clientX - resizeStart.x
@@ -245,20 +258,20 @@ export default function DraggableTriangle({
     } else if (isRotating) {
       // Use the pivot (right-angle vertex) in screen coords
       const pivot = boardToScreen(x, y)
-      const pivotX = pivot.x
-      const pivotY = pivot.y
       
       // Calculate current angle from pivot to touch
-      const currentAngle = Math.atan2(touch.clientY - pivotY, touch.clientX - pivotX) * (180 / Math.PI)
+      const currentAngle = angleDeg(pivot.x, pivot.y, touch.clientX, touch.clientY)
       
-      // Calculate the difference from the initial angle
-      let deltaAngle = currentAngle - rotationStart.initialAngle
+      // Calculate the difference from the initial angle using shortest path
+      const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
       
-      // Handle angle wrapping (ensure we take the shorter path)
-      while (deltaAngle > 180) deltaAngle -= 360
-      while (deltaAngle < -180) deltaAngle += 360
+      // Compute radius from pivot to cursor (in px)
+      const r = Math.hypot(touch.clientX - pivot.x, touch.clientY - pivot.y)
       
-      const newRotation = rotationStart.rotation + deltaAngle
+      // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
+      const gain = clamp(200 / (r || 1), 1.2, 3.0)
+      
+      const newRotation = rotationStart.rotation + delta * gain
       onPositionChange(x, y, newRotation, size)
     } else if (isResizing) {
       const deltaX = touch.clientX - resizeStart.x

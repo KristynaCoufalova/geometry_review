@@ -69,6 +69,19 @@ export default function DraggableRuler({
   const boardToScreen = coordinateConverter.boardToScreen
   const screenToBoard = coordinateConverter.screenToBoard
 
+  // Helper functions for rotation with gain
+  const shortestDelta = (a: number, b: number) => {
+    return ((b - a + 540) % 360) - 180
+  }
+
+  const angleDeg = (px: number, py: number, mx: number, my: number) => {
+    return Math.atan2(my - py, mx - px) * 180 / Math.PI
+  }
+
+  const clamp = (v: number, lo: number, hi: number) => {
+    return Math.max(lo, Math.min(hi, v))
+  }
+
   const screenPos = boardToScreen(x, y)
 
   // Smooth movement without grid snapping
@@ -137,16 +150,18 @@ export default function DraggableRuler({
       const centerY = screenPos.y
       
       // Calculate current angle from center to mouse
-      const currentAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI)
+      const currentAngle = angleDeg(centerX, centerY, e.clientX, e.clientY)
       
-      // Calculate the difference from the initial angle
-      let deltaAngle = currentAngle - rotationStart.initialAngle
+      // Calculate the difference from the initial angle using shortest path
+      const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
       
-      // Handle angle wrapping (ensure we take the shorter path)
-      while (deltaAngle > 180) deltaAngle -= 360
-      while (deltaAngle < -180) deltaAngle += 360
+      // Compute radius from center to cursor (in px)
+      const r = Math.hypot(e.clientX - centerX, e.clientY - centerY)
       
-      const newRotation = rotationStart.rotation + deltaAngle
+      // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
+      const gain = clamp(200 / (r || 1), 1.2, 3.0)
+      
+      const newRotation = rotationStart.rotation + delta * gain
       onPositionChange(x, y, newRotation, length)
     } else if (isResizing) {
       const deltaX = e.clientX - resizeStart.x
@@ -181,16 +196,18 @@ export default function DraggableRuler({
       const centerY = screenPos.y
       
       // Calculate current angle from center to touch
-      const currentAngle = Math.atan2(touch.clientY - centerY, touch.clientX - centerX) * (180 / Math.PI)
+      const currentAngle = angleDeg(centerX, centerY, touch.clientX, touch.clientY)
       
-      // Calculate the difference from the initial angle
-      let deltaAngle = currentAngle - rotationStart.initialAngle
+      // Calculate the difference from the initial angle using shortest path
+      const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
       
-      // Handle angle wrapping (ensure we take the shorter path)
-      while (deltaAngle > 180) deltaAngle -= 360
-      while (deltaAngle < -180) deltaAngle += 360
+      // Compute radius from center to cursor (in px)
+      const r = Math.hypot(touch.clientX - centerX, touch.clientY - centerY)
       
-      const newRotation = rotationStart.rotation + deltaAngle
+      // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
+      const gain = clamp(200 / (r || 1), 1.2, 3.0)
+      
+      const newRotation = rotationStart.rotation + delta * gain
       onPositionChange(x, y, newRotation, length)
     } else if (isResizing) {
       const deltaX = touch.clientX - resizeStart.x

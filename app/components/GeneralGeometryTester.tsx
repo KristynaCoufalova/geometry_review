@@ -14,7 +14,8 @@ import { SelectionManager } from '../../lib/selection-manager'
 import { RenameManager } from '../../lib/rename-manager'
 import { WORLD_PER_MM, WORLD_PER_CM } from '../../lib/measurement-scale'
 import { UNIT_LABEL } from '../../lib/measurement-scale'
-import { exportBoard, importBoard } from '../../lib/board-serializer'
+import { exportBoard, importBoard, type Snapshot } from '../../lib/board-serializer'
+import { readJsonFile, downloadJson } from '../../lib/file-io'
 import SelectObjectsTool from '../../lib/select-objects-tool'
 
 const EPS = 0.05
@@ -605,52 +606,19 @@ export default function GeneralGeometryTester() {
       const brd = boardManagerRef.current?.getBoard()
       if (!brd) return
 
-      const serializeGeometry = (obj: any) => {
-        const type = obj.elType
-        if (type === 'point') {
-          return { x: obj.X(), y: obj.Y() }
-        }
-        if (type === 'segment' || type === 'line') {
-          const p1 = (obj.points && obj.points[0]) ? obj.points[0] : null
-          const p2 = (obj.points && obj.points[1]) ? obj.points[1] : null
-          return p1 && p2 ? { x1: p1.X(), y1: p1.Y(), x2: p2.X(), y2: p2.Y() } : null
-        }
-        if (type === 'circle') {
-          const c = obj.center
-          const on = obj.point2 || (obj.points && obj.points[1]) || null
-          const center = c ? { x: c.X(), y: c.Y() } : null
-          const radius = (c && on) ? Math.hypot(on.X() - c.X(), on.Y() - c.Y()) : (typeof obj.R === 'function' ? obj.R() : undefined)
-          return { center, radius }
-        }
-        if (type === 'polygon') {
-          const verts = Array.isArray(obj.vertices) ? obj.vertices.map((v:any)=>({ x: v.X(), y: v.Y() })) : []
-          return { vertices: verts }
-        }
-        return null
-      }
-
-      const constructionData = {
-        timestamp: new Date().toISOString(),
-        unit: UNIT_LABEL,
-        boundingBoxCm: brd.getBoundingBox(),
-        objects: Object.values(brd.objects).map((obj: any) => ({
-          id: obj.id,
-          type: obj.elType,
-          name: obj.name,
-          geometry: serializeGeometry(obj)
-        })),
-        createdStack: [...createdStack],
-        gridOption: gridOption,
+      const snapshot = exportBoard(brd, {
+        gridOption,
         rulerPosition,
         trianglePosition,
         protractorPosition,
         rulerVisible,
         triangleVisible,
-        protractorVisible
-      }
+        protractorVisible,
+        createdStack: [...createdStack]
+      })
 
       try {
-        localStorage.setItem('geometry_construction_autosave', JSON.stringify(constructionData))
+        localStorage.setItem('geometry_construction_autosave', JSON.stringify(snapshot))
       } catch (e) {
         // Ignore localStorage errors (e.g., quota exceeded)
       }
@@ -663,23 +631,33 @@ export default function GeneralGeometryTester() {
   useEffect(() => {
     if (!boardManagerRef.current) return
 
-    try {
-      const saved = localStorage.getItem('geometry_construction_autosave')
-      if (saved) {
-        const data = JSON.parse(saved)
-        // Auto-restore without confirmation
-        setData(data)
-        if (data.gridOption) setGridOption(data.gridOption)
-        if (data.rulerPosition) setRulerPosition(data.rulerPosition)
-        if (data.trianglePosition) setTrianglePosition(data.trianglePosition)
-        if (data.protractorPosition) setProtractorPosition(data.protractorPosition)
-        if (data.rulerVisible !== undefined) setRulerVisible(data.rulerVisible)
-        if (data.triangleVisible !== undefined) setTriangleVisible(data.triangleVisible)
-        if (data.protractorVisible !== undefined) setProtractorVisible(data.protractorVisible)
+      try {
+        const saved = localStorage.getItem('geometry_construction_autosave')
+        if (saved) {
+          const data = JSON.parse(saved)
+          // Auto-restore without confirmation
+          setData(data)
+          if (data.meta) {
+            if (data.meta.gridOption) setGridOption(data.meta.gridOption)
+            if (data.meta.rulerPosition) setRulerPosition(data.meta.rulerPosition)
+            if (data.meta.trianglePosition) setTrianglePosition(data.meta.trianglePosition)
+            if (data.meta.protractorPosition) setProtractorPosition(data.meta.protractorPosition)
+            if (data.meta.rulerVisible !== undefined) setRulerVisible(data.meta.rulerVisible)
+            if (data.meta.triangleVisible !== undefined) setTriangleVisible(data.meta.triangleVisible)
+            if (data.meta.protractorVisible !== undefined) setProtractorVisible(data.meta.protractorVisible)
+          }
+          // Backward compatibility: check old format too
+          if (data.gridOption) setGridOption(data.gridOption)
+          if (data.rulerPosition) setRulerPosition(data.rulerPosition)
+          if (data.trianglePosition) setTrianglePosition(data.trianglePosition)
+          if (data.protractorPosition) setProtractorPosition(data.protractorPosition)
+          if (data.rulerVisible !== undefined) setRulerVisible(data.rulerVisible)
+          if (data.triangleVisible !== undefined) setTriangleVisible(data.triangleVisible)
+          if (data.protractorVisible !== undefined) setProtractorVisible(data.protractorVisible)
+        }
+      } catch (e) {
+        // Ignore errors
       }
-    } catch (e) {
-      // Ignore errors
-    }
   }, [])
 
   // Update undo/redo state after operations
@@ -776,21 +754,16 @@ export default function GeneralGeometryTester() {
     setFeedback('Konstrukce exportována')
   }
 
-  function importConstruction(event: React.ChangeEvent<HTMLInputElement>) {
+  async function importConstruction(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const importedData = JSON.parse(e.target?.result as string)
-        setData(importedData)
-        setFeedback('Konstrukce načtena - klikněte na "Načíst" pro obnovení')
-      } catch (err) {
-        setFeedback('Chyba při načítání souboru')
-      }
+    try {
+      const data = await readJsonFile<Snapshot>(file)
+      setData(data)
+      setFeedback('Konstrukce načtena – klikněte „Načíst" pro obnovení')
+    } catch {
+      setFeedback('Chyba při načítání souboru')
     }
-    reader.readAsText(file)
   }
 
   function loadConstruction() {
@@ -841,7 +814,7 @@ export default function GeneralGeometryTester() {
     }
 
     // Use library importer
-    importBoard(brd, { objects: objs })
+    importBoard(brd, data as Snapshot)
 
     // Optional: restore grid and tool positions if present
     if (data.gridOption) setGridOption(data.gridOption)

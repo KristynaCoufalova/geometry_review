@@ -3,7 +3,7 @@ import { exportBoard } from '../../lib/board-serializer'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import JXG from 'jsxgraph'
-import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ArrowLeft, CheckCircle, XCircle, Clock, Settings, ChevronUp } from 'lucide-react'
+import { Save, Trash2, Circle, Pencil, RotateCcw, RotateCw, Eraser, Ruler, Triangle, Gauge, ArrowLeft, CheckCircle, XCircle, Clock, Settings, ChevronUp, Info, Keyboard } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import DraggableRuler from './DraggableRuler'
@@ -16,11 +16,47 @@ import { GridMode } from '../../lib/grid-manager'
 import { BoardManager, JBoard } from '../../lib/board-manager'
 import { GeometryFactory } from '../../lib/geometry-factory'
 import { SelectionManager } from '../../lib/selection-manager'
-import { calculateCenteredBoundingBoxCm } from '../../lib/measurement-scale'
+import { calculateCenteredBoundingBoxCm, WORLD_PER_MM, WORLD_PER_CM } from '../../lib/measurement-scale'
 
 // Using JBoard from BoardManager
 
 const EPS = 0.03
+
+// Helper function to snap coordinates to grid (with optional soft snapping)
+function snapToGrid(x: number, y: number, gridOption: GridMode, softSnap: boolean = false): {x: number, y: number} {
+  if (gridOption === 'none') return { x, y }
+  
+  let snapSize = WORLD_PER_MM // default fine snap = 1 mm
+  
+  // Fine-tuned snap sizes for smoother placement
+  if (gridOption === 'major' || gridOption === 'major-minor') {
+    snapSize = WORLD_PER_CM // snap to 1 cm for major
+  } else if (gridOption === 'minor') {
+    snapSize = WORLD_PER_MM // 1 mm
+  } else if (gridOption === 'dot') {
+    snapSize = WORLD_PER_MM
+  }
+  
+  // Soft snap: only snap if close to grid line (within 30% of snap size)
+  if (softSnap) {
+    const snappedX = Math.round(x / snapSize) * snapSize
+    const snappedY = Math.round(y / snapSize) * snapSize
+    const threshold = snapSize * 0.3
+    
+    const distX = Math.abs(x - snappedX)
+    const distY = Math.abs(y - snappedY)
+    
+    return {
+      x: distX < threshold ? snappedX : x,
+      y: distY < threshold ? snappedY : y
+    }
+  }
+  
+  return {
+    x: Math.round(x / snapSize) * snapSize,
+    y: Math.round(y / snapSize) * snapSize
+  }
+}
 
 function dist(a: {x:number,y:number}, b:{x:number,y:number}) {
   return Math.hypot(a.x - b.x, a.y - b.y)
@@ -115,16 +151,19 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
   const [canUndoState, setCanUndoState] = useState(false)
   const [canRedoState, setCanRedoState] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   const toolRef = useRef(tool)
   const selectedRef = useRef(selected)
   const uiBusyRef = useRef(uiBusy)
+  const gridOptionRef = useRef(gridOption)
   const handleClickRef = useRef<((brd: JBoard, e: any) => void) | null>(null)
   const givensRef = useRef<any>(null)
   
   useEffect(() => { toolRef.current = tool }, [tool])
   useEffect(() => { selectedRef.current = selected }, [selected])
   useEffect(() => { uiBusyRef.current = uiBusy }, [uiBusy])
+  useEffect(() => { gridOptionRef.current = gridOption }, [gridOption])
   
 
   // Timer effect
@@ -316,17 +355,52 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
     return pt || null
   }
 
+  // Helper function to get or create points via history system
+  const getOrCreatePointViaHistory = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
+    const factory = geometryFactoryRef.current
+    if (!factory) return null
+
+    // Use soft snapping for smoother placement - only snap if close to grid
+    const snapped = snapToGrid(xy.x, xy.y, gridOptionRef.current, true)
+    
+    // Use grid-aware EPS: slightly larger than snap size to catch nearby snapped points
+    const checkEPS = factory.getNearbyEps(gridOptionRef.current, EPS)
+    
+    // try to reuse an existing non-fixed point near the coordinates
+    const existing = factory.findNearbyPoint(snapped.x, snapped.y, checkEPS)
+    if (existing) return existing
+
+    // create point at snapped coordinates (with soft snap)
+    const pt = factory.pointWithGrid(snapped.x, snapped.y, gridOptionRef.current)
+    
+    // Don't create a separate point operation here - the point will be tracked
+    // automatically when the shape operation (segment/line/circle) executes
+    // The shape operations will find this point by ID and attach tracking to it
+    
+    return pt
+  }, [])
+
   const createPointSmart = useCallback((brd: JBoard, xy: {x:number, y:number}) => {
     const factory = geometryFactoryRef.current
     if (!factory) return null
 
-    // Prefer reusing existing point under cursor
-    const under = brd.getAllObjectsUnderMouse({}) as any[]
-    const existing = under?.find((o:any)=> o?.elType==='point' && !o.visProp?.fixed)
+    // Use soft snapping for smoother placement
+    const snapped = snapToGrid(xy.x, xy.y, gridOption, true)
+    
+    // Use grid-aware EPS to check for existing points
+    const checkEPS = factory.getNearbyEps(gridOption, EPS)
+    
+    // Check for existing points at snapped location
+    const existing = factory.findNearbyPoint(snapped.x, snapped.y, checkEPS)
     if (existing) return existing
 
-    // Create free point (grid-aware)
-    const pt = factory.pointWithGrid(xy.x, xy.y, gridOption)
+    // Prefer reusing existing point under cursor
+    const under = brd.getAllObjectsUnderMouse({}) as any[]
+    const existingUnder = under?.find((o:any)=> o?.elType==='point' && !o.visProp?.fixed)
+    if (existingUnder) return existingUnder
+
+    // Create free point (grid-aware with soft snap)
+    const pt = factory.pointWithGrid(snapped.x, snapped.y, gridOption)
     return pt
   }, [gridOption])
 
@@ -374,26 +448,30 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
       case 'segment': {
         const selectionMgr = selectionManagerRef.current
         if (!selectionMgr) break
+
         const first = selectionMgr.getFirst()
         if (!first) {
+          // first click
           undoRedoRef.current?.begin()
-          const under = brd.getAllObjectsUnderMouse(e)
-          const existing = under.find((o:any)=> o.elType==='point' && !o.visProp.fixed)
-          const p = existing || createPointSmart(brd, xy)
+          const p = getOrCreatePointViaHistory(brd, xy)
           if (!p) { undoRedoRef.current?.commit(); break }
           selectionMgr.select(p)
           setFeedback('Klikněte na druhý bod')
+          // don't commit yet; we'll finish in second click
           break
         }
+
+        // second click
         const a:any = first
-        const b = createPointSmart(brd, xy)
+        const b = getOrCreatePointViaHistory(brd, xy)
         if (!b) { undoRedoRef.current?.commit(); selectionMgr.clear(); break }
+
         const p1 = { x: a.X(), y: a.Y() }
-        const p2 = { x: (b as any).X(), y: (b as any).Y() }
+        const p2 = { x: b.X(), y: b.Y() }
         const attr = { strokeColor:'#2563eb', strokeWidth:2 }
         const op = undoRedoRef.current?.createSegmentOperation(p1, p2, attr)
         if (op) {
-          op.pointIds = [a.id, (b as any).id]
+          op.pointIds = [a.id, b.id]              // <-- bind exact endpoints
           undoRedoRef.current?.pushOperation(op)
         }
         undoRedoRef.current?.commit()
@@ -405,26 +483,27 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
       case 'line': {
         const selectionMgr = selectionManagerRef.current
         if (!selectionMgr) break
+
         const first = selectionMgr.getFirst()
         if (!first) {
           undoRedoRef.current?.begin()
-          const under = brd.getAllObjectsUnderMouse(e)
-          const existing = under.find((o:any)=> o.elType==='point' && !o.visProp.fixed)
-          const p = existing || createPointSmart(brd, xy)
+          const p = getOrCreatePointViaHistory(brd, xy)
           if (!p) { undoRedoRef.current?.commit(); break }
           selectionMgr.select(p)
           setFeedback('Klikněte na druhý bod')
           break
         }
+
         const a:any = first
-        const b = createPointSmart(brd, xy)
+        const b = getOrCreatePointViaHistory(brd, xy)
         if (!b) { undoRedoRef.current?.commit(); selectionMgr.clear(); break }
+
         const p1 = { x: a.X(), y: a.Y() }
-        const p2 = { x: (b as any).X(), y: (b as any).Y() }
+        const p2 = { x: b.X(), y: b.Y() }
         const attr = { strokeColor:'#059669', strokeWidth:1, dash:1 }
         const op = undoRedoRef.current?.createLineOperation(p1, p2, attr)
         if (op) {
-          op.pointIds = [a.id, (b as any).id]
+          op.pointIds = [a.id, b.id]
           undoRedoRef.current?.pushOperation(op)
         }
         undoRedoRef.current?.commit()
@@ -436,26 +515,27 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
       case 'circle': {
         const selectionMgr = selectionManagerRef.current
         if (!selectionMgr) break
+
         const first = selectionMgr.getFirst()
         if (!first) {
           undoRedoRef.current?.begin()
-          const under = brd.getAllObjectsUnderMouse(e)
-          const existing = under.find((o:any)=> o.elType==='point' && !o.visProp.fixed)
-          const c = existing || createPointSmart(brd, xy)
+          const c = getOrCreatePointViaHistory(brd, xy)
           if (!c) { undoRedoRef.current?.commit(); break }
           selectionMgr.select(c)
           setFeedback('Klikněte na bod na kružnici')
           break
         }
+
         const c:any = first
-        const p = createPointSmart(brd, xy)
+        const p = getOrCreatePointViaHistory(brd, xy)
         if (!p) { undoRedoRef.current?.commit(); selectionMgr.clear(); break }
+
         const center = { x: c.X(), y: c.Y() }
-        const on = { x: (p as any).X(), y: (p as any).Y() }
+        const on     = { x: p.X(), y: p.Y() }
         const attr = { strokeColor:'#dc2626', strokeWidth:2 }
         const op = undoRedoRef.current?.createCircleOperation(center, on, attr)
         if (op) {
-          op.pointIds = [c.id, (p as any).id]
+          op.pointIds = [c.id, p.id]
           undoRedoRef.current?.pushOperation(op)
         }
         undoRedoRef.current?.commit()
@@ -481,7 +561,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
         break
       }
     }
-  }, [createPointSmart])
+  }, [getOrCreatePointViaHistory, createPointSmart])
 
   useEffect(() => { handleClickRef.current = handleClick }, [handleClick])
 
@@ -639,6 +719,11 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
       givensRef.current = null;
     };
   }, [loading, error]); // 👈 key change
+
+  // When user changes the option, update the grid manager
+  useEffect(() => {
+    boardManagerRef.current?.setGridMode(gridOption)
+  }, [gridOption])
 
   // Create givens when question loads AND the board is ready
   useEffect(() => {
@@ -992,7 +1077,57 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
                 {question.prompt_md ?? ''}
               </ReactMarkdown>
             </div>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                onClick={() => setShowHelp(!showHelp)}
+                className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+              >
+                <Info size={14} />
+                {showHelp ? 'Skrýt nápovědu' : 'Zobrazit nápovědu'}
+              </button>
+            </div>
           </div>
+
+          {showHelp && (
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+              <h3 className="font-semibold text-blue-800 mb-2">Nápověda k nástrojům:</h3>
+              <div className="grid md:grid-cols-2 gap-4 text-sm text-blue-700">
+                <div>
+                  <h4 className="font-medium mb-1">Základní nástroje:</h4>
+                  <ul className="space-y-1">
+                    <li>• <strong>Myš:</strong> Interakce s objekty bez vytváření</li>
+                    <li>• <strong>Bod:</strong> Vytvoření bodu kliknutím</li>
+                    <li>• <strong>Úsečka:</strong> Klikněte na dva body</li>
+                    <li>• <strong>Přímka:</strong> Klikněte na dva body</li>
+                    <li>• <strong>Kružnice:</strong> Střed a bod na kružnici</li>
+                    <li>• <strong>Guma:</strong> Smazání objektu</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-medium mb-1">Fyzické nástroje:</h4>
+                  <ul className="space-y-1">
+                    <li>• <strong>Pravítko:</strong> Měření vzdáleností</li>
+                    <li>• <strong>Trojúhelník:</strong> Rýsování úhlů</li>
+                    <li>• <strong>Úhloměr:</strong> Měření úhlů</li>
+                    <li>• <strong>Modrý bod:</strong> Přesun nástroje</li>
+                    <li>• <strong>Zelený bod:</strong> Otočení nástroje</li>
+                    <li>• <strong>Oranžový bod:</strong> Změna velikosti</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-blue-300">
+                <h4 className="font-medium mb-2 text-blue-800 flex items-center gap-2">
+                  <Keyboard size={16} />
+                  Klávesové zkratky:
+                </h4>
+                <ul className="space-y-1 text-sm text-blue-700">
+                  <li>• <strong>Ctrl/Cmd + Z:</strong> Zpět (Undo)</li>
+                  <li>• <strong>Ctrl/Cmd + Shift + Z:</strong> Znovu (Redo)</li>
+                  <li>• <strong>Delete:</strong> Smazat vybraný objekt (když je aktivní guma)</li>
+                </ul>
+              </div>
+            </div>
+          )}
 
           {/* Toolbar */}
           <div className="mb-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-md">

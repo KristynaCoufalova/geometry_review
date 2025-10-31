@@ -37,6 +37,10 @@ export default function DraggableTriangle({
   const getScale = useBoardScale(triangleRef)
   const { pxPerUnitX, pxPerUnitY } = getScale()
   const pxPerUnit = Math.min(pxPerUnitX, pxPerUnitY)
+  
+  // Pivot offset: the right-angle vertex sits at (50, 50) in wrapper coords
+  // due to SVG offset of (-50, -50), matching where (0, 0) in SVG coords is
+  const PIVOT_OFFSET = { x: 50, y: 50 }
 
   // Memoized coordinate conversion functions for better performance
   const coordinateConverter = useMemo(() => {
@@ -121,11 +125,11 @@ export default function DraggableTriangle({
     const target = e.target as HTMLElement
     if (target.classList.contains('rotation-handle') || target.closest('.rotation-handle')) {
       setIsRotating(true)
-      // Calculate initial angle from triangle center to mouse position
-      const currentScreenPos = boardToScreen(x, y)
-      const centerX = currentScreenPos.x
-      const centerY = currentScreenPos.y
-      const initialAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI)
+      // Calculate initial angle from pivot (right-angle vertex) to mouse position
+      const pivot = boardToScreen(x, y)
+      const pivotX = pivot.x
+      const pivotY = pivot.y
+      const initialAngle = Math.atan2(e.clientY - pivotY, e.clientX - pivotX) * (180 / Math.PI)
       setRotationStart({ x: e.clientX, y: e.clientY, rotation, initialAngle })
     } else if (target.classList.contains('resize-handle') || target.closest('.resize-handle')) {
       setIsResizing(true)
@@ -152,11 +156,11 @@ export default function DraggableTriangle({
     const target = e.target as HTMLElement
     if (target.classList.contains('rotation-handle') || target.closest('.rotation-handle')) {
       setIsRotating(true)
-      // Calculate initial angle from triangle center to touch position
-      const currentScreenPos = boardToScreen(x, y)
-      const centerX = currentScreenPos.x
-      const centerY = currentScreenPos.y
-      const initialAngle = Math.atan2(touch.clientY - centerY, touch.clientX - centerX) * (180 / Math.PI)
+      // Calculate initial angle from pivot (right-angle vertex) to touch position
+      const pivot = boardToScreen(x, y)
+      const pivotX = pivot.x
+      const pivotY = pivot.y
+      const initialAngle = Math.atan2(touch.clientY - pivotY, touch.clientX - pivotX) * (180 / Math.PI)
       setRotationStart({ x: touch.clientX, y: touch.clientY, rotation, initialAngle })
     } else if (target.classList.contains('resize-handle') || target.closest('.resize-handle')) {
       setIsResizing(true)
@@ -179,13 +183,13 @@ export default function DraggableTriangle({
       const smoothPos = smoothPosition(newBoardPos.x, newBoardPos.y)
       onPositionChange(smoothPos.x, smoothPos.y, rotation, size)
     } else if (isRotating) {
-      // Get the current screen position of the triangle center
-      const currentScreenPos = boardToScreen(x, y)
-      const centerX = currentScreenPos.x
-      const centerY = currentScreenPos.y
+      // Use the pivot (right-angle vertex) in screen coords
+      const pivot = boardToScreen(x, y)
+      const pivotX = pivot.x
+      const pivotY = pivot.y
       
-      // Calculate current angle from center to mouse
-      const currentAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI)
+      // Calculate current angle from pivot to mouse
+      const currentAngle = Math.atan2(e.clientY - pivotY, e.clientX - pivotX) * (180 / Math.PI)
       
       // Calculate the difference from the initial angle
       let deltaAngle = currentAngle - rotationStart.initialAngle
@@ -239,13 +243,13 @@ export default function DraggableTriangle({
       const smoothPos = smoothPosition(newBoardPos.x, newBoardPos.y)
       onPositionChange(smoothPos.x, smoothPos.y, rotation, size)
     } else if (isRotating) {
-      // Get the current screen position of the triangle center
-      const currentScreenPos = boardToScreen(x, y)
-      const centerX = currentScreenPos.x
-      const centerY = currentScreenPos.y
+      // Use the pivot (right-angle vertex) in screen coords
+      const pivot = boardToScreen(x, y)
+      const pivotX = pivot.x
+      const pivotY = pivot.y
       
-      // Calculate current angle from center to touch
-      const currentAngle = Math.atan2(touch.clientY - centerY, touch.clientX - centerX) * (180 / Math.PI)
+      // Calculate current angle from pivot to touch
+      const currentAngle = Math.atan2(touch.clientY - pivotY, touch.clientX - pivotX) * (180 / Math.PI)
       
       // Calculate the difference from the initial angle
       let deltaAngle = currentAngle - rotationStart.initialAngle
@@ -617,10 +621,13 @@ export default function DraggableTriangle({
       ref={triangleRef}
       className={`absolute select-none group ${isActive ? 'z-50' : 'z-40'}`}
       style={{
-        left: screenPos.x,
-        top: screenPos.y,
+        // (x,y) is the right-angle vertex in BOARD coords.
+        // Place the wrapper so that this vertex lands at the wrapper's transform origin.
+        left: screenPos.x - PIVOT_OFFSET.x,
+        top: screenPos.y - PIVOT_OFFSET.y,
+        // rotate around the right-angle vertex
         transform: `rotate(${rotation}deg)`,
-        transformOrigin: '0 0',
+        transformOrigin: `${-PIVOT_OFFSET.x}px ${-PIVOT_OFFSET.y}px`,
         // Debug: add background to see hover area
         backgroundColor: isHovering ? 'rgba(255, 0, 0, 0.1)' : 'transparent'
       }}

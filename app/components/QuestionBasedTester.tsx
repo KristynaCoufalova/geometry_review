@@ -1379,12 +1379,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
             </div>
           </div>
 
-          <div 
-            ref={containerRef} 
-            id="jxgbox" 
-            className="w-full border-2 border-gray-300 rounded-lg bg-white jxgbox relative" 
-            style={{ height: 500, touchAction: 'none' }} 
-          >
+          <div className="relative">
             {/* Settings Button - positioned outside JSXGraph container */}
             <div className="absolute top-2 right-2 z-50 settings-dropdown" style={{ zIndex: 9999 }}>
               <div className="flex items-center gap-2">
@@ -1405,6 +1400,8 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
                   <Settings size={18} />
                 </button>
               </div>
+              
+              {/* Settings Dropdown */}
               {showSettings && (
                 <div className="absolute top-12 right-0 bg-white border border-gray-300 rounded-lg shadow-lg min-w-48 z-20" style={{ zIndex: 10001 }}>
                   <div className="p-3 border-b border-gray-200">
@@ -1427,32 +1424,57 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
                   </div>
                   <div className="py-1">
                     <button
-                      onClick={() => { setGridOption('none'); setShowSettings(false) }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'none' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                      onClick={() => {
+                        setGridOption('none')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'none' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
                     >
                       Žádná mřížka
                     </button>
                     <button
-                      onClick={() => { setGridOption('major'); setShowSettings(false) }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'major' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                      onClick={() => {
+                        setGridOption('major')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'major' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
                     >
                       Hlavní mřížka
                     </button>
                     <button
-                      onClick={() => { setGridOption('minor'); setShowSettings(false) }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'minor' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                      onClick={() => {
+                        setGridOption('minor')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'minor' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
                     >
                       Vedlejší mřížka
                     </button>
                     <button
-                      onClick={() => { setGridOption('major-minor'); setShowSettings(false) }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'major-minor' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                      onClick={() => {
+                        setGridOption('major-minor')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'major-minor' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
                     >
                       Hlavní a vedlejší mřížka
                     </button>
                     <button
-                      onClick={() => { setGridOption('dot'); setShowSettings(false) }}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${gridOption === 'dot' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'}`}
+                      onClick={() => {
+                        setGridOption('dot')
+                        setShowSettings(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                        gridOption === 'dot' ? 'bg-gray-100 text-gray-900' : 'text-gray-700'
+                      }`}
                     >
                       Bodová mřížka
                     </button>
@@ -1460,6 +1482,13 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
                 </div>
               )}
             </div>
+
+            <div 
+              ref={containerRef} 
+              id="jxgbox" 
+              className="w-full border-2 border-gray-300 rounded-lg bg-white jxgbox" 
+              style={{ height: 500, touchAction: 'none' }} 
+            >
             {/* Draggable Ruler */}
             {rulerVisible && (
               <DraggableRuler
@@ -1502,6 +1531,7 @@ export default function QuestionBasedTester({ questionId, studentId = 'anonymous
                 onUiBusyChange={setUiBusy}
               />
             )}
+            </div>
           </div>
 
 

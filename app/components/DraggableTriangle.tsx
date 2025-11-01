@@ -27,13 +27,36 @@ export default function DraggableTriangle({
   onUiBusyChange
 }: DraggableTriangleProps) {
   const [isDragging, setIsDragging] = useState(false)
-  const [isRotating, setIsRotating] = useState(false)
-  const [isResizing, setIsResizing] = useState(false)
+  const [isRotatingResizing, setIsRotatingResizing] = useState(false)
   const [isHovering, setIsHovering] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-  const [rotationStart, setRotationStart] = useState({ x: 0, y: 0, rotation: 0, initialAngle: 0 })
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, size: 0 })
+  const [rotateResizeStart, setRotateResizeStart] = useState({ 
+    x: 0, 
+    y: 0, 
+    rotation: 0, 
+    size: 0, 
+    initialMouseX: 0,
+    initialMouseY: 0,
+    pivotScreen: { x: 0, y: 0 },
+    initialHandleAngle: 0,
+    initialHandleDistance: 0
+  })
   const triangleRef = useRef<HTMLDivElement>(null)
+  
+  // Refs to avoid state lag
+  const isGlueActiveRef = useRef(false)
+  const lastPointerIdRef = useRef<number | null>(null)
+  const dragModeRef = useRef<'move' | 'glue' | null>(null)
+  const dragOffsetRef = useRef({ dx: 0, dy: 0 }) // for move (drag) only
+  const rafIdRef = useRef<number | null>(null)
+  const glueCalibRef = useRef<{ 
+    k: number; 
+    rotationOffset: number; 
+    localAngleDeg: number;
+    initialMouseR: number;  // Initial mouse distance from pivot
+    initialSize: number;     // Initial size
+    initialRotation: number; // Initial rotation
+  } | null>(null)
   const getScale = useBoardScale(triangleRef)
   const { pxPerUnitX, pxPerUnitY } = getScale()
   const pxPerUnit = Math.min(pxPerUnitX, pxPerUnitY)
@@ -129,210 +152,227 @@ export default function DraggableTriangle({
     return { x: boardX, y: boardY }
   }
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  // Calculate handle position in screen coordinates for given size and rotation
+  const getHandleScreenPosition = useCallback((sizeValue: number, rotationValue: number) => {
+    // Calculate handle position in triangle's local coordinate system (SVG coords)
+    const basePxLocal = sizeValue * pxPerUnit
+    const heightPxLocal = type === '45-45-90' ? basePxLocal : basePxLocal * Math.sqrt(3) / 2
+    const hypMidXLocal = basePxLocal / 2
+    const hypMidYLocal = heightPxLocal / 2
+    
+    // Handle offset in SVG coordinates (relative to right-angle vertex at 0,0)
+    const handleXLocal = 1.35 * hypMidXLocal - basePxLocal * 0.2
+    const handleYLocal = 1.35 * hypMidYLocal - heightPxLocal * 0.2
+    
+    // Rotate the handle position by rotationValue degrees
+    const rotationRad = (rotationValue * Math.PI) / 180
+    const cosR = Math.cos(rotationRad)
+    const sinR = Math.sin(rotationRad)
+    const rotatedX = handleXLocal * cosR - handleYLocal * sinR
+    const rotatedY = handleXLocal * sinR + handleYLocal * cosR
+    
+    // Convert to board coordinates (handle is in pixels, convert to units)
+    const handleBoardX = x + rotatedX / pxPerUnit
+    const handleBoardY = y + rotatedY / pxPerUnit
+    
+    // Convert to screen coordinates
+    return boardToScreen(handleBoardX, handleBoardY)
+  }, [pxPerUnit, type, x, y, boardToScreen])
+
+  // Distance from pivot to the handle for a given size (in *pixels*)
+  const handleDistanceForSize = useCallback((s: number) => {
+    const base = s * pxPerUnit
+    const height = type === '45-45-90' ? base : base * Math.sqrt(3) / 2
+    const localHandleX = 1.35 * (base / 2) - base * 0.2
+    const localHandleY = 1.35 * (height / 2) - height * 0.2
+    return Math.hypot(localHandleX, localHandleY)
+  }, [pxPerUnit, type])
+
+  // Angle (deg) of the handle in local (unrotated) coords for a given size
+  const handleLocalAngleForSize = useCallback((s: number) => {
+    const base = s * pxPerUnit
+    const h = type === '45-45-90' ? base : base * Math.sqrt(3) / 2
+    const localHandleX = 1.35 * (base / 2) - base * 0.2
+    const localHandleY = 1.35 * (h / 2) - h * 0.2
+    return Math.atan2(localHandleY, localHandleX) * (180 / Math.PI)
+  }, [pxPerUnit, type])
+
+  // Clamp size to your current min/max "height" constraints
+  const clampSizeByHeight = useCallback((s: number) => {
+    const heightFrom = (ss: number) => (type === '45-45-90' ? ss : ss * Math.sqrt(3) / 2)
+    const minH = 3
+    const maxH = 10
+    const h0 = heightFrom(s)
+    if (h0 < minH) return (type === '45-45-90') ? minH : minH / (Math.sqrt(3) / 2)
+    if (h0 > maxH) return (type === '45-45-90') ? maxH : maxH / (Math.sqrt(3) / 2)
+    return s
+  }, [type])
+
+  // Clamp size strictly (for use on release only)
+  const clampSizeByHeightStrict = useCallback((s: number) => {
+    const heightFrom = (ss: number) => (type === '45-45-90' ? ss : ss * Math.sqrt(3) / 2)
+    const minH = 3
+    const maxH = 10
+    const h = heightFrom(s)
+    if (h < minH) return (type === '45-45-90') ? minH : minH / (Math.sqrt(3) / 2)
+    if (h > maxH) return (type === '45-45-90') ? maxH : maxH / (Math.sqrt(3) / 2)
+    return s
+  }, [type])
+
+  // Local handle vector in *unrotated* SVG coords for a given size (in px)
+  const handleLocalVecPx = useCallback((sizePx: number, is454590: boolean) => {
+    const base = sizePx
+    const height = is454590 ? base : base * Math.sqrt(3) / 2
+    const vx = 1.35 * (base / 2) - base * 0.2
+    const vy = 1.35 * (height / 2) - height * 0.2
+    return { vx, vy }
+  }, [])
+
+  // Length and angle (deg) of that vector. Angle is size-invariant (vx,vy scale by size).
+  const handleLocalPolar = useCallback((sizePx: number, is454590: boolean) => {
+    const { vx, vy } = handleLocalVecPx(sizePx, is454590)
+    const r = Math.hypot(vx, vy)
+    const a = Math.atan2(vy, vx) * 180 / Math.PI
+    return { r, a }
+  }, [handleLocalVecPx])
+
+  // Pointer down handler - replaces mouse/touch handlers
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
+    const target = e.target as HTMLElement
+    if (target.setPointerCapture) {
+      target.setPointerCapture(e.pointerId)
+    }
+    lastPointerIdRef.current = e.pointerId
     onActivate()
     onUiBusyChange(true)
-    
-    const target = e.target as HTMLElement
-    if (target.classList.contains('rotation-handle') || target.closest('.rotation-handle')) {
-      setIsRotating(true)
-      // Calculate initial angle from pivot (right-angle vertex) to mouse position
+
+    const isHandle = target.classList.contains('rotate-resize-handle') || !!target.closest('.rotate-resize-handle')
+
+    if (isHandle) {
+      // --- GLUE start: Store initial state ---
       const pivot = boardToScreen(x, y)
-      const pivotX = pivot.x
-      const pivotY = pivot.y
-      const initialAngle = Math.atan2(e.clientY - pivotY, e.clientX - pivotX) * (180 / Math.PI)
-      setRotationStart({ x: e.clientX, y: e.clientY, rotation, initialAngle })
-    } else if (target.classList.contains('resize-handle') || target.closest('.resize-handle')) {
-      setIsResizing(true)
-      setResizeStart({ x: e.clientX, y: e.clientY, size })
-    } else if (target.classList.contains('drag-handle') || target.closest('.drag-handle')) {
-      setIsDragging(true)
-      setDragStart({ x: e.clientX - screenPos.x, y: e.clientY - screenPos.y })
+      
+      // Where the mouse actually is right now
+      const dx = e.clientX - pivot.x
+      const dy = e.clientY - pivot.y
+      const initialMouseR = Math.hypot(dx, dy)
+      const mouseAngle = Math.atan2(dy, dx) * 180 / Math.PI
+      
+      // Handle geometry at current size
+      const handleR = handleDistanceForSize(size)
+      const localHandleAngleDeg = handleLocalAngleForSize(size)
+
+      // k calibration: we want the formula newSize = initialSize + k * (mouseR - initialMouseR)
+      // At initialMouseR, we want initialSize (deltaR = 0), so newSize = initialSize ✓
+      // For proportional scaling: newSize = initialSize * (mouseR / initialMouseR)
+      // = initialSize + initialSize * (mouseR / initialMouseR - 1)
+      // = initialSize + initialSize * (mouseR - initialMouseR) / initialMouseR
+      // So: k = initialSize / initialMouseR
+      const k = size / (initialMouseR || 1)
+
+      // Rotation calibration
+      const rotationOffset = rotation - (mouseAngle - localHandleAngleDeg)
+
+      glueCalibRef.current = { 
+        k, 
+        rotationOffset, 
+        localAngleDeg: localHandleAngleDeg,
+        initialMouseR,        // Store where we started
+        initialSize: size,    // Store initial size
+        initialRotation: rotation  // Store initial rotation
+      }
+
+      dragModeRef.current = 'glue'
+      isGlueActiveRef.current = true
+      setIsRotatingResizing(true)
+
     } else {
-      // Allow dragging from anywhere on the triangle
-      setIsDragging(true)
-      setDragStart({ x: e.clientX - screenPos.x, y: e.clientY - screenPos.y })
+      // --- MOVE: drag whole triangle; remember offset in screen space ---
+      const startLeft = screenPos.x
+      const startTop = screenPos.y
+      dragOffsetRef.current = { dx: e.clientX - startLeft, dy: e.clientY - startTop }
+      if (isDragging) setIsDragging(false) // ensure React state not fighting us
+      dragModeRef.current = 'move'
     }
+
+    // Start listening
+    setIsDragging(true)
   }
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    onActivate()
-    onUiBusyChange(true)
-    
-    const touch = e.touches[0]
-    if (!touch) return
-    
-    const target = e.target as HTMLElement
-    if (target.classList.contains('rotation-handle') || target.closest('.rotation-handle')) {
-      setIsRotating(true)
-      // Calculate initial angle from pivot (right-angle vertex) to touch position
-      const pivot = boardToScreen(x, y)
-      const pivotX = pivot.x
-      const pivotY = pivot.y
-      const initialAngle = Math.atan2(touch.clientY - pivotY, touch.clientX - pivotX) * (180 / Math.PI)
-      setRotationStart({ x: touch.clientX, y: touch.clientY, rotation, initialAngle })
-    } else if (target.classList.contains('resize-handle') || target.closest('.resize-handle')) {
-      setIsResizing(true)
-      setResizeStart({ x: touch.clientX, y: touch.clientY, size })
-    } else if (target.classList.contains('drag-handle') || target.closest('.drag-handle')) {
-      setIsDragging(true)
-      setDragStart({ x: touch.clientX - screenPos.x, y: touch.clientY - screenPos.y })
-    } else {
-      // Allow dragging from anywhere on the triangle
-      setIsDragging(true)
-      setDragStart({ x: touch.clientX - screenPos.x, y: touch.clientY - screenPos.y })
-    }
-  }
+  // Global pointer move (single source of truth), + requestAnimationFrame
+  const onPointerMoveDoc = useCallback((e: PointerEvent) => {
+    if (!isDragging || !dragModeRef.current) return
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isDragging) {
-      const newScreenX = e.clientX - dragStart.x
-      const newScreenY = e.clientY - dragStart.y
-      const newBoardPos = screenToBoard(newScreenX, newScreenY)
-      const smoothPos = smoothPosition(newBoardPos.x, newBoardPos.y)
-      onPositionChange(smoothPos.x, smoothPos.y, rotation, size)
-    } else if (isRotating) {
-      // Use the pivot (right-angle vertex) in screen coords
-      const pivot = boardToScreen(x, y)
-      
-      // Calculate current angle from pivot to mouse
-      const currentAngle = angleDeg(pivot.x, pivot.y, e.clientX, e.clientY)
-      
-      // Calculate the difference from the initial angle using shortest path
-      const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
-      
-      // Compute radius from pivot to cursor (in px)
-      const r = Math.hypot(e.clientX - pivot.x, e.clientY - pivot.y)
-      
-      // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px THIS CHANGE!!
-      const gain = clamp(40 / (r || 1), 1.2, 3.0)
-      
-      const newRotation = rotationStart.rotation + delta * gain
-      onPositionChange(x, y, newRotation, size)
-    } else if (isResizing) {
-      const deltaX = e.clientX - resizeStart.x
-      const deltaY = e.clientY - resizeStart.y
-      
-      // Project the delta vector onto the triangle's main axis (considering rotation)
-      const rotationRad = (rotation * Math.PI) / 180
-      const triangleAxisX = Math.cos(rotationRad)
-      const triangleAxisY = Math.sin(rotationRad)
-      
-      // Calculate the projection of the delta vector onto the triangle axis
-      const projection = deltaX * triangleAxisX + deltaY * triangleAxisY
-      const deltaSize = projection / 20 // Scale factor
-      
-      const proposedSize = resizeStart.size + deltaSize
-      
-      // Calculate height based on triangle type
-      const height = type === '45-45-90' ? proposedSize : proposedSize * Math.sqrt(3) / 2
-      
-      // Enforce height constraints: minimum 3cm, maximum 10cm
-      let constrainedSize = proposedSize
-      if (height < 3) {
-        // Calculate size needed for 3cm height
-        constrainedSize = type === '45-45-90' ? 3 : 3 / (Math.sqrt(3) / 2)
-      } else if (height > 10) {
-        // Calculate size needed for 10cm height
-        constrainedSize = type === '45-45-90' ? 10 : 10 / (Math.sqrt(3) / 2)
+    if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
+    rafIdRef.current = requestAnimationFrame(() => {
+      if (dragModeRef.current === 'move') {
+        const { dx, dy } = dragOffsetRef.current
+        const newScreenX = e.clientX - dx
+        const newScreenY = e.clientY - dy
+        const pos = screenToBoard(newScreenX, newScreenY)
+        onPositionChange(pos.x, pos.y, rotation, size)
+      } else if (dragModeRef.current === 'glue') {
+        const pivot = boardToScreen(x, y)
+        const dx = e.clientX - pivot.x
+        const dy = e.clientY - pivot.y
+        const mouseAngle = Math.atan2(dy, dx) * 180 / Math.PI
+        const mouseR = Math.hypot(dx, dy)
+
+        const calib = glueCalibRef.current
+        if (!calib) return
+
+        // Calculate relative to where we started
+        const deltaR = mouseR - calib.initialMouseR
+        const newSize = calib.initialSize + calib.k * deltaR
+        
+        // Recalculate local angle for the new size
+        const newLocalAngle = handleLocalAngleForSize(newSize)
+        const newRotation = (mouseAngle - newLocalAngle) + calib.rotationOffset
+
+        onPositionChange(x, y, newRotation, newSize)
       }
-      
-      onPositionChange(x, y, rotation, constrainedSize)
-    }
-  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, rotationStart, x, y, rotation, size, type, onPositionChange, screenToBoard, boardToScreen])
+    })
+  }, [isDragging, x, y, screenToBoard, boardToScreen, onPositionChange, rotation, size, handleLocalAngleForSize])
 
-  const handleTouchMove = useCallback((e: TouchEvent) => {
-    const touch = e.touches[0]
-    if (!touch) return
-    
-    if (isDragging) {
-      const newScreenX = touch.clientX - dragStart.x
-      const newScreenY = touch.clientY - dragStart.y
-      const newBoardPos = screenToBoard(newScreenX, newScreenY)
-      const smoothPos = smoothPosition(newBoardPos.x, newBoardPos.y)
-      onPositionChange(smoothPos.x, smoothPos.y, rotation, size)
-    } else if (isRotating) {
-      // Use the pivot (right-angle vertex) in screen coords
-      const pivot = boardToScreen(x, y)
-      
-      // Calculate current angle from pivot to touch
-      const currentAngle = angleDeg(pivot.x, pivot.y, touch.clientX, touch.clientY)
-      
-      // Calculate the difference from the initial angle using shortest path
-      const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
-      
-      // Compute radius from pivot to cursor (in px)
-      const r = Math.hypot(touch.clientX - pivot.x, touch.clientY - pivot.y)
-      
-      // Gain: tune these numbers; e.g., 200/r gives ~2x at r=100px, ~1x at r=200px
-      const gain = clamp(200 / (r || 1), 1.2, 3.0)
-      
-      const newRotation = rotationStart.rotation + delta * gain
-      onPositionChange(x, y, newRotation, size)
-    } else if (isResizing) {
-      const deltaX = touch.clientX - resizeStart.x
-      const deltaY = touch.clientY - resizeStart.y
-      
-      // Project the delta vector onto the triangle's main axis (considering rotation)
-      const rotationRad = (rotation * Math.PI) / 180
-      const triangleAxisX = Math.cos(rotationRad)
-      const triangleAxisY = Math.sin(rotationRad)
-      
-      // Calculate the projection of the delta vector onto the triangle axis
-      const projection = deltaX * triangleAxisX + deltaY * triangleAxisY
-      const deltaSize = projection / 20 // Scale factor
-      
-      const proposedSize = resizeStart.size + deltaSize
-      
-      // Calculate height based on triangle type
-      const height = type === '45-45-90' ? proposedSize : proposedSize * Math.sqrt(3) / 2
-      
-      // Enforce height constraints: minimum 3cm, maximum 10cm
-      let constrainedSize = proposedSize
-      if (height < 3) {
-        // Calculate size needed for 3cm height
-        constrainedSize = type === '45-45-90' ? 3 : 3 / (Math.sqrt(3) / 2)
-      } else if (height > 10) {
-        // Calculate size needed for 10cm height
-        constrainedSize = type === '45-45-90' ? 10 : 10 / (Math.sqrt(3) / 2)
+  // Pointer up: stop, then clamp once
+  const onPointerUpDoc = useCallback((e: PointerEvent) => {
+    if (!isDragging) return
+
+    // Clamp only once at the end if we were glue-dragging
+    if (dragModeRef.current === 'glue') {
+      const clamped = clampSizeByHeightStrict(size)
+      if (clamped !== size) {
+        // Keep current rotation, only snap size to limit
+        onPositionChange(x, y, rotation, clamped)
       }
-      
-      onPositionChange(x, y, rotation, constrainedSize)
     }
-  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, rotationStart, x, y, rotation, size, type, onPositionChange, screenToBoard, boardToScreen])
 
-  const handleMouseUp = useCallback(() => {
+    isGlueActiveRef.current = false
+    dragModeRef.current = null
+    glueCalibRef.current = null // Clear calibration
     setIsDragging(false)
-    setIsRotating(false)
-    setIsResizing(false)
+    setIsRotatingResizing(false)
     onUiBusyChange(false)
-  }, [onUiBusyChange])
 
-  const handleTouchEnd = useCallback(() => {
-    setIsDragging(false)
-    setIsRotating(false)
-    setIsResizing(false)
-    onUiBusyChange(false)
-  }, [onUiBusyChange])
+    if (lastPointerIdRef.current != null && triangleRef.current) {
+      triangleRef.current.releasePointerCapture?.(lastPointerIdRef.current)
+    }
+  }, [isDragging, clampSizeByHeightStrict, size, rotation, x, y, onPositionChange, onUiBusyChange])
 
   useEffect(() => {
-    if (isDragging || isRotating || isResizing) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-      document.addEventListener('touchmove', handleTouchMove, { passive: false })
-      document.addEventListener('touchend', handleTouchEnd)
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-        document.removeEventListener('touchmove', handleTouchMove, { passive: false } as any)
-        document.removeEventListener('touchend', handleTouchEnd)
-      }
+    if (!isDragging) return
+    const move = (e: PointerEvent) => onPointerMoveDoc(e)
+    const up = (e: PointerEvent) => onPointerUpDoc(e)
+    document.addEventListener('pointermove', move, { passive: true })
+    document.addEventListener('pointerup', up, { passive: true })
+    return () => {
+      document.removeEventListener('pointermove', move as any)
+      document.removeEventListener('pointerup', up as any)
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
     }
-  }, [isDragging, isRotating, isResizing, handleMouseMove, handleTouchMove, handleMouseUp, handleTouchEnd])
+  }, [isDragging, onPointerMoveDoc, onPointerUpDoc])
 
   // ResizeObserver to handle container size changes
   useEffect(() => {
@@ -569,6 +609,9 @@ export default function DraggableTriangle({
   // Calculate hypotenuse midpoint (relative to SVG origin at 50, 50)
   const hypMidX = basePx / 2
   const hypMidY = heightPx / 2
+  
+  // Calculate handle position using the same function used in drag calculations
+  const { vx, vy } = handleLocalVecPx(basePx, type === '45-45-90')
 
   // Derived geometry for inner triangular cutouts (proportional to size)
   const baseLength = size * pxPerUnit
@@ -644,8 +687,7 @@ export default function DraggableTriangle({
         // Debug: add background to see hover area
         backgroundColor: isHovering ? 'rgba(255, 0, 0, 0.1)' : 'transparent'
       }}
-      onMouseDown={handleMouseDown}
-      onTouchStart={handleTouchStart}
+      onPointerDown={onPointerDown}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
@@ -839,38 +881,21 @@ export default function DraggableTriangle({
           return numbers
         })()}
         
-        {/* Rotation handle - positioned relative to hypotenuse midpoint */}
+        {/* Combined rotation and resize handle - positioned relative to hypotenuse midpoint */}
         <div
-          className="rotation-handle absolute w-6 h-6 bg-white rounded-full cursor-grab hover:scale-110 border-2 border-emerald-500 shadow-md flex items-center justify-center transition-opacity duration-200"
+          className="rotate-resize-handle absolute w-6 h-6 bg-white rounded-full cursor-grab hover:scale-110 border-2 border-blue-500 shadow-md flex items-center justify-center transition-opacity duration-200"
           style={{ 
             pointerEvents: 'auto',
             boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
             opacity: isHovering ? 1 : 0, // Temporarily only show on hover
-            left: `${1.35 * hypMidX - 50 - basePx * 0.2}px`,
-            top: `${1.35 * hypMidY - 50 - heightPx * 0.2}px`,
+            left: `${vx - 50}px`,  // (-50,-50) is your SVG offset
+            top: `${vy - 50}px`,
             transform: 'translate(-50%, -50%)',
             zIndex: 20
           }}
-          title="Otočit trojúhelník"
+          title="Otočit a změnit velikost"
         >
-          <div className="w-2 h-2 bg-emerald-500 rounded-full" />
-        </div>
-        
-        {/* Resize handle - positioned relative to hypotenuse midpoint */}
-        <div
-          className="resize-handle absolute w-6 h-6 bg-white rounded-full cursor-grab hover:scale-110 border-2 border-amber-500 shadow-md flex items-center justify-center transition-opacity duration-200"
-          style={{ 
-            pointerEvents: 'auto',
-            boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
-            opacity: isHovering ? 1 : 0, // Temporarily only show on hover
-            left: `${0.6 * hypMidX - 50 + basePx * 0.2}px`,
-            top: `${0.6 * hypMidY - 50 + heightPx * 0.2}px`,
-            transform: 'translate(-50%, -50%)',
-            zIndex: 15
-          }}
-          title="Změnit velikost"
-        >
-          <div className="w-2 h-2 bg-amber-500 rounded-full" />
+          <div className="w-2 h-2 bg-blue-500 rounded-full" />
         </div>
       </div>
       

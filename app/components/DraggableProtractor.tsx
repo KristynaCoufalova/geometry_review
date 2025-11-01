@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useBoardScale } from '../hooks/useBoardScale'
 
 interface DraggableProtractorProps {
@@ -31,72 +31,75 @@ export default function DraggableProtractor({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [rotationStart, setRotationStart] = useState({ x: 0, y: 0, rotation: 0, initialAngle: 0 })
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, size: 0 })
+
   const protractorRef = useRef<HTMLDivElement>(null)
   const getScale = useBoardScale(protractorRef)
   const { pxPerUnitX, pxPerUnitY } = getScale()
   const pxPerUnit = Math.min(pxPerUnitX, pxPerUnitY)
 
-  // Get bounding box info from scale hook
-  const scaleInfo = getScale()
-  const { boardLeft, boardTop, boardRight, boardBottom, boardWidth, boardHeight } = scaleInfo
+  // ------- Coordinate conversion (memoized) -------
+  const { boardToScreen, screenToBoard } = useMemo(() => {
+    const s = getScale()
+    const { boardLeft, boardTop, boardBottom, boardWidth, boardHeight } = s
 
-  // Convert board coordinates to screen coordinates
-  const boardToScreen = (boardX: number, boardY: number) => {
-    // Get actual container dimensions
-    const container = protractorRef.current?.closest('.jxgbox') as HTMLElement
-    const containerWidth = container?.offsetWidth || 800
-    const containerHeight = container?.offsetHeight || 500
-    
-    const screenX = ((boardX - boardLeft) / boardWidth) * containerWidth
-    const screenY = containerHeight - ((boardY - boardBottom) / boardHeight) * containerHeight
-    
-    return { x: screenX, y: screenY }
-  }
-
-  const screenToBoard = (screenX: number, screenY: number) => {
-    const container = protractorRef.current?.closest('.jxgbox') as HTMLElement
-    const containerWidth = container?.offsetWidth || 800
-    const containerHeight = container?.offsetHeight || 500
-    
-    const boardX = (screenX / containerWidth) * boardWidth + boardLeft
-    const boardY = boardTop - (screenY / containerHeight) * boardHeight
-    
-    return { x: boardX, y: boardY }
-  }
+    return {
+      boardToScreen: (boardX: number, boardY: number) => {
+        const container = protractorRef.current?.closest('.jxgbox') as HTMLElement
+        const cw = container?.offsetWidth || 800
+        const ch = container?.offsetHeight || 500
+        const sx = ((boardX - boardLeft) / boardWidth) * cw
+        const sy = ch - ((boardY - boardBottom) / boardHeight) * ch
+        return { x: sx, y: sy }
+      },
+      screenToBoard: (screenX: number, screenY: number) => {
+        const container = protractorRef.current?.closest('.jxgbox') as HTMLElement
+        const cw = container?.offsetWidth || 800
+        const ch = container?.offsetHeight || 500
+        const bx = (screenX / cw) * boardWidth + boardLeft
+        const by = boardTop - (screenY / ch) * boardHeight
+        return { x: bx, y: by }
+      }
+    }
+  }, [getScale])
 
   const screenPos = boardToScreen(x, y)
 
-  // Helper functions for rotation with gain
-  const shortestDelta = (a: number, b: number) => {
-    return ((b - a + 540) % 360) - 180
-  }
+  // ------- Box + pivot (with bleed) -----
+  // Add extra padding around the drawing so the box is larger than the semicircle + labels + shadow
+  const bleed = Math.max(24, (size * pxPerUnit) * 0.25) // 24px or 25% of radius
+  
+  const radiusPx = size * pxPerUnit
+  const boxW = radiusPx * 2.6 + bleed * 2
+  const boxH = radiusPx * 2.4 + bleed * 2
+  
+  // Red dot position inside the box (shifted by bleed)
+  const centerX = bleed + radiusPx * 1.2
+  const centerY = bleed + radiusPx * 1.1
 
-  const angleDeg = (px: number, py: number, mx: number, my: number) => {
-    return Math.atan2(my - py, mx - px) * 180 / Math.PI
-  }
+  // Red dot in screen coordinates (true pivot for rotation math):
+  const pivotScreen = useMemo(() => ({
+    x: screenPos.x - boxW / 2 + centerX,
+    y: screenPos.y - boxH / 2 + centerY,
+  }), [screenPos.x, screenPos.y, boxW, boxH, centerX, centerY])
 
-  const clamp = (v: number, lo: number, hi: number) => {
-    return Math.max(lo, Math.min(hi, v))
-  }
+  // ------- Helpers -------
+  const shortestDelta = (a: number, b: number) => ((b - a + 540) % 360) - 180
+  const angleDeg = (px: number, py: number, mx: number, my: number) =>
+    Math.atan2(my - py, mx - px) * 180 / Math.PI
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+  const smoothPosition = (bx: number, by: number) => ({ x: bx, y: by })
 
-  // Smooth movement without grid snapping
-  const smoothPosition = (boardX: number, boardY: number) => {
-    return { x: boardX, y: boardY }
-  }
-
+  // ------- Events -------
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     onActivate()
     onUiBusyChange(true)
-    
+
     const target = e.target as HTMLElement
     if (target.classList.contains('rotation-handle')) {
       setIsRotating(true)
-      // Calculate initial angle from center to mouse position
-      const centerX = screenPos.x
-      const centerY = screenPos.y
-      const initialAngle = angleDeg(centerX, centerY, e.clientX, e.clientY)
+      const initialAngle = angleDeg(pivotScreen.x, pivotScreen.y, e.clientX, e.clientY)
       setRotationStart({ x: e.clientX, y: e.clientY, rotation, initialAngle })
     } else if (target.classList.contains('resize-handle')) {
       setIsResizing(true)
@@ -112,17 +115,14 @@ export default function DraggableProtractor({
     e.stopPropagation()
     onActivate()
     onUiBusyChange(true)
-    
+
     const touch = e.touches[0]
     if (!touch) return
-    
     const target = e.target as HTMLElement
+
     if (target.classList.contains('rotation-handle')) {
       setIsRotating(true)
-      // Calculate initial angle from center to touch position
-      const centerX = screenPos.x
-      const centerY = screenPos.y
-      const initialAngle = angleDeg(centerX, centerY, touch.clientX, touch.clientY)
+      const initialAngle = angleDeg(pivotScreen.x, pivotScreen.y, touch.clientX, touch.clientY)
       setRotationStart({ x: touch.clientX, y: touch.clientY, rotation, initialAngle })
     } else if (target.classList.contains('resize-handle')) {
       setIsResizing(true)
@@ -138,105 +138,73 @@ export default function DraggableProtractor({
       const newScreenX = e.clientX - dragStart.x
       const newScreenY = e.clientY - dragStart.y
       const newBoardPos = screenToBoard(newScreenX, newScreenY)
-      const smoothPos = smoothPosition(newBoardPos.x, newBoardPos.y)
-      onPositionChange(smoothPos.x, smoothPos.y, rotation, size)
-    } else if (isRotating) {
-      const centerX = screenPos.x
-      const centerY = screenPos.y
-      
-      // Calculate current angle from center to mouse
-      const currentAngle = angleDeg(centerX, centerY, e.clientX, e.clientY)
-      
-      // Calculate the difference from the initial angle using shortest path
+      const p = smoothPosition(newBoardPos.x, newBoardPos.y)
+      onPositionChange(p.x, p.y, rotation, size)
+      return
+    }
+
+    if (isRotating) {
+      const currentAngle = angleDeg(pivotScreen.x, pivotScreen.y, e.clientX, e.clientY)
       const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
-      
-      // Compute radius from center to cursor (in px)
-      const r = Math.hypot(e.clientX - centerX, e.clientY - centerY)
-      
-      // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+      const r = Math.hypot(e.clientX - pivotScreen.x, e.clientY - pivotScreen.y)
       const gain = clamp(120 / (r || 1), 1.2, 3.0)
-      
-      // Apply gain to delta, then add to initial rotation
       const newRotationRaw = rotationStart.rotation + delta * gain
-      
-      // Snap to 5-degree increments
       const snapped = Math.round(newRotationRaw / 5) * 5
-      
-      // Normalize to 0-360 range
       const normalized = ((snapped % 360) + 360) % 360
-      
       onPositionChange(x, y, normalized, size)
-    } else if (isResizing) {
-      const deltaX = e.clientX - resizeStart.x
-      const deltaY = e.clientY - resizeStart.y
-      
-      // Project the delta vector onto the protractor's main axis (considering rotation)
-      const rotationRad = (rotation * Math.PI) / 180
-      const protractorAxisX = Math.cos(rotationRad)
-      const protractorAxisY = Math.sin(rotationRad)
-      
-      // Calculate the projection of the delta vector onto the protractor axis
-      const projection = deltaX * protractorAxisX + deltaY * protractorAxisY
-      const deltaSize = projection / 20 // Scale factor
-      
+      return
+    }
+
+    if (isResizing) {
+      const dx = e.clientX - resizeStart.x
+      const dy = e.clientY - resizeStart.y
+      const rotRad = (rotation * Math.PI) / 180
+      const ax = Math.cos(rotRad)
+      const ay = Math.sin(rotRad)
+      const projection = dx * ax + dy * ay
+      const deltaSize = projection / 20
       const newSize = Math.max(2, Math.min(6, resizeStart.size + deltaSize))
       onPositionChange(x, y, rotation, newSize)
     }
-  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, rotationStart, screenPos, x, y, rotation, size, onPositionChange])
+  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, rotationStart, pivotScreen, screenToBoard, x, y, rotation, size, onPositionChange])
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     const touch = e.touches[0]
     if (!touch) return
-    
+
     if (isDragging) {
       const newScreenX = touch.clientX - dragStart.x
       const newScreenY = touch.clientY - dragStart.y
       const newBoardPos = screenToBoard(newScreenX, newScreenY)
-      const smoothPos = smoothPosition(newBoardPos.x, newBoardPos.y)
-      onPositionChange(smoothPos.x, smoothPos.y, rotation, size)
-    } else if (isRotating) {
-      const centerX = screenPos.x
-      const centerY = screenPos.y
-      
-      // Calculate current angle from center to touch
-      const currentAngle = angleDeg(centerX, centerY, touch.clientX, touch.clientY)
-      
-      // Calculate the difference from the initial angle using shortest path
+      const p = smoothPosition(newBoardPos.x, newBoardPos.y)
+      onPositionChange(p.x, p.y, rotation, size)
+      return
+    }
+
+    if (isRotating) {
+      const currentAngle = angleDeg(pivotScreen.x, pivotScreen.y, touch.clientX, touch.clientY)
       const delta = shortestDelta(rotationStart.initialAngle, currentAngle)
-      
-      // Compute radius from center to cursor (in px)
-      const r = Math.hypot(touch.clientX - centerX, touch.clientY - centerY)
-      
-      // Gain: tune these numbers; e.g., 120/r gives ~1.2x at r=100px, ~0.6x at r=200px
+      const r = Math.hypot(touch.clientX - pivotScreen.x, touch.clientY - pivotScreen.y)
       const gain = clamp(120 / (r || 1), 1.2, 3.0)
-      
-      // Apply gain to delta, then add to initial rotation
       const newRotationRaw = rotationStart.rotation + delta * gain
-      
-      // Snap to 5-degree increments
       const snapped = Math.round(newRotationRaw / 5) * 5
-      
-      // Normalize to 0-360 range
       const normalized = ((snapped % 360) + 360) % 360
-      
       onPositionChange(x, y, normalized, size)
-    } else if (isResizing) {
-      const deltaX = touch.clientX - resizeStart.x
-      const deltaY = touch.clientY - resizeStart.y
-      
-      // Project the delta vector onto the protractor's main axis (considering rotation)
-      const rotationRad = (rotation * Math.PI) / 180
-      const protractorAxisX = Math.cos(rotationRad)
-      const protractorAxisY = Math.sin(rotationRad)
-      
-      // Calculate the projection of the delta vector onto the protractor axis
-      const projection = deltaX * protractorAxisX + deltaY * protractorAxisY
-      const deltaSize = projection / 20 // Scale factor
-      
+      return
+    }
+
+    if (isResizing) {
+      const dx = touch.clientX - resizeStart.x
+      const dy = touch.clientY - resizeStart.y
+      const rotRad = (rotation * Math.PI) / 180
+      const ax = Math.cos(rotRad)
+      const ay = Math.sin(rotRad)
+      const projection = dx * ax + dy * ay
+      const deltaSize = projection / 20
       const newSize = Math.max(2, Math.min(6, resizeStart.size + deltaSize))
       onPositionChange(x, y, rotation, newSize)
     }
-  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, rotationStart, screenPos, x, y, rotation, size, onPositionChange])
+  }, [isDragging, isRotating, isResizing, dragStart, resizeStart, rotationStart, pivotScreen, screenToBoard, x, y, rotation, size, onPositionChange])
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false)
@@ -261,121 +229,69 @@ export default function DraggableProtractor({
       return () => {
         document.removeEventListener('mousemove', handleMouseMove)
         document.removeEventListener('mouseup', handleMouseUp)
-        document.removeEventListener('touchmove', handleTouchMove, { passive: false } as any)
+        document.removeEventListener('touchmove', handleTouchMove as any)
         document.removeEventListener('touchend', handleTouchEnd)
       }
     }
   }, [isDragging, isRotating, isResizing, handleMouseMove, handleTouchMove, handleMouseUp, handleTouchEnd])
 
-  // ResizeObserver to handle container size changes
+  // Keep layout responsive
   useEffect(() => {
     const el = protractorRef.current?.closest('.jxgbox')
     if (!el) return
-    
-    const ro = new ResizeObserver(() => {
-      // Force a light refresh by updating dragStart state
-      setDragStart(s => ({ ...s }))
-    })
+    const ro = new ResizeObserver(() => setDragStart(s => ({ ...s })))
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  // Calculate protractor dimensions
-  const radiusPx = size * pxPerUnit
-  const centerX = size * pxPerUnit * 1.2  // Adjusted for new SVG dimensions
-  const centerY = size * pxPerUnit * 1.1  // Adjusted for new SVG dimensions
-  
-  // Helper variables for improved design
-  const R = radiusPx                               // outer radius (tick tips)
-  const ring = Math.max(8, R * 0.075)              // thickness of the dark tick band
-  const innerR = R - ring                          // inner edge of the tick band (rim sits here)
-  const uid = React.useMemo(() => Math.random().toString(36).slice(2), [])
-  const arc = (rad:number) =>
-    `M ${centerX - rad} ${centerY} A ${rad} ${rad} 0 0 1 ${centerX + rad} ${centerY}`
-  
-  // Returns a closed path for the grey ring band between radii R and r (r < R), 0..180°
-  const ringBandPath = (R: number, r: number) => {
-    // Outer arc: from left outer point to right outer point (sweep=1)
-    // Then line down to the right inner point
-    // Inner arc back to the left inner point (sweep=0), and close.
-    return `
-      M ${centerX - R} ${centerY}
-      A ${R} ${R} 0 0 1 ${centerX + R} ${centerY}
-      L ${centerX + r} ${centerY}
-      A ${r} ${r} 0 0 0 ${centerX - r} ${centerY}
-      Z
-    `;
-  };
+  // ----- Visual geometry -----
+  const R = radiusPx
+  const ring = Math.max(8, R * 0.075)
+  const innerR = R - ring
+  const uid = useMemo(() => Math.random().toString(36).slice(2), [])
+  const arc = (rad:number) => `M ${centerX - rad} ${centerY} A ${rad} ${rad} 0 0 1 ${centerX + rad} ${centerY}`
+  const ringBandPath = (RR: number, r: number) => `
+    M ${centerX - RR} ${centerY}
+    A ${RR} ${RR} 0 0 1 ${centerX + RR} ${centerY}
+    L ${centerX + r} ${centerY}
+    A ${r} ${r} 0 0 0 ${centerX - r} ${centerY}
+    Z
+  `
 
-  // Generate protractor markings
   const generateMarkings = () => {
-    const markings = []
-    
-    // Generate degree markings (0-180 degrees)
+    const m = []
     for (let angle = 0; angle <= 180; angle += 1) {
       const rad = (angle * Math.PI) / 180
-      
       const isMajor = angle % 10 === 0
       const isMedium = angle % 5 === 0 && !isMajor
-      const isMinor = angle % 1 === 0 && !isMajor && !isMedium
-      
-      // Different tick lengths for different types
+      const isMinor = !isMajor && !isMedium
+
       let tickLength = 0
       let strokeWidth = 0.5
-      
-      if (isMajor) {
-        tickLength = R - innerR  // Full length from inner to outer
-        strokeWidth = 2.5
-      } else if (isMedium) {
-        tickLength = (R - innerR) * 0.7  // 70% of full length
-        strokeWidth = 1.5
-      } else if (isMinor) {
-        tickLength = (R - innerR) * 0.4  // 40% of full length
-        strokeWidth = 0.8
-      }
-      
+      if (isMajor) { tickLength = R - innerR; strokeWidth = 2.5 }
+      else if (isMedium) { tickLength = (R - innerR) * 0.7; strokeWidth = 1.5 }
+      else if (isMinor) { tickLength = (R - innerR) * 0.4; strokeWidth = 0.8 }
+
       const x1 = centerX + Math.cos(rad) * (R - tickLength)
       const y1 = centerY - Math.sin(rad) * (R - tickLength)
       const x2 = centerX + Math.cos(rad) * R
       const y2 = centerY - Math.sin(rad) * R
-      
-      markings.push(
-        <line
-          key={`mark-${angle}`}
-          x1={x1}
-          y1={y1}
-          x2={x2}
-          y2={y2}
-          stroke="#374151"
-          strokeWidth={strokeWidth}
-        />
-      )
-      
-      // Add degree labels for every 10 degrees
+
+      m.push(<line key={`mark-${angle}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#374151" strokeWidth={strokeWidth} />)
+
       if (isMajor) {
-        const labelDistance = R + 20 // was radiusPx + 20
-        const labelX = centerX + Math.cos(rad) * labelDistance
-        const labelY = centerY - Math.sin(rad) * labelDistance
-        
-        markings.push(
-          <text
-            key={`label-${angle}`}
-            x={labelX}
-            y={labelY}
-            fontSize="11"
-            fill="#1f2937"
-            fontFamily="Arial, sans-serif"
-            fontWeight="bold"
-            textAnchor="middle"
-            dominantBaseline="middle"
-          >
+        const labelDistance = R + 20
+        const lx = centerX + Math.cos(rad) * labelDistance
+        const ly = centerY - Math.sin(rad) * labelDistance
+        m.push(
+          <text key={`label-${angle}`} x={lx} y={ly} fontSize="11" fill="#1f2937" fontFamily="Arial, sans-serif"
+                fontWeight="bold" textAnchor="middle" dominantBaseline="middle">
             {angle}°
           </text>
         )
       }
     }
-    
-    return markings
+    return m
   }
 
   return (
@@ -385,92 +301,63 @@ export default function DraggableProtractor({
       style={{
         left: screenPos.x,
         top: screenPos.y,
+        width: boxW,
+        height: boxH,
         transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
-        transformOrigin: '50% 50%'
+        // Crucial: rotate around red dot defined in local (box) pixels
+        transformOrigin: `${centerX}px ${centerY}px`,
+        overflow: 'visible', // important: allow rotated content to extend outside
       }}
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
-      {/* Protractor body */}
-      <div className="relative" style={{ pointerEvents: 'auto' }}>
+      <div className="relative" style={{ pointerEvents: 'auto', width: boxW, height: boxH, overflow: 'visible' }}>
         <svg
-          width={size * pxPerUnit * 2.6}
-          height={size * pxPerUnit * 2.4}
+          width={boxW}
+          height={boxH}
           className="absolute"
-          style={{ 
-            left: -size * pxPerUnit * 1.3, 
-            top: -size * pxPerUnit * 1.2,
-            pointerEvents: 'auto'
-          }}
-          viewBox={`0 0 ${size * pxPerUnit * 2.6} ${size * pxPerUnit * 1.4}`}
+          style={{ left: 0, top: 0, pointerEvents: 'auto', overflow: 'visible' }}
+          viewBox={`0 0 ${boxW} ${boxH}`}
         >
           <defs>
-            <filter id="protractorShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <filter 
+              id="protractorShadow"
+              filterUnits="userSpaceOnUse"
+              x={-bleed} 
+              y={-bleed}
+              width={boxW + bleed * 2}
+              height={boxH + bleed * 2}>
               <feDropShadow dx="1" dy="1" stdDeviation="2" floodColor="#000" floodOpacity="0.15"/>
             </filter>
             <mask id={`innerArcMask-${uid}`}>
               <rect width="100%" height="100%" fill="white"/>
-              {/* Create a larger black rectangle to completely hide the inner arc between the lines */}
-              <rect 
-                x={centerX - innerR * 2} 
-                y={centerY - ring - 1} 
-                width={innerR * 4} 
-                height={ring + 20} 
-                fill="black"
-              />
+              <rect x={centerX - innerR * 2} y={centerY - ring - 1} width={innerR * 4} height={ring + 20} fill="black"/>
             </mask>
           </defs>
-          
-          {/* Grey ring segment (curved band between arcs) */}
-          <path
-            d={ringBandPath(R, innerR)}
-            fill="rgba(107,114,128,0.22)"
-            stroke="none"
-          />
 
-          {/* Grey band between the two straight lines */}
-          <rect
-            x={centerX - innerR}
-            y={centerY - ring}
-            width={innerR * 2}
-            height={ring}
-            fill="rgba(107,114,128,0.22)"
-          />
-
-          {/* outer semicircle outline */}
+          <path d={ringBandPath(R, innerR)} fill="rgba(107,114,128,0.22)" stroke="none" />
+          <rect x={centerX - innerR} y={centerY - ring} width={innerR * 2} height={ring} fill="rgba(107,114,128,0.22)"/>
           <path d={arc(R)} fill="none" stroke="#0f172a" strokeWidth="2.2" opacity="0.95" filter="url(#protractorShadow)"/>
+          <line x1={centerX - R} y1={centerY} x2={centerX + R} y2={centerY} stroke="#000" strokeWidth={isActive ? 1.9 : 1} strokeLinecap="round" />
+          <line x1={centerX - innerR} y1={centerY - ring} x2={centerX + innerR} y2={centerY - ring} stroke="#000" strokeWidth="1.4" strokeLinecap="round" />
+          <path d={`M ${centerX - innerR} ${centerY} A ${innerR} ${innerR} 0 0 1 ${centerX + innerR} ${centerY} Z`} fill="none" stroke="#000" strokeWidth="1" mask={`url(#innerArcMask-${uid})`} />
 
-          {/* baseline */}
-          <line x1={centerX - R} y1={centerY} x2={centerX + R} y2={centerY}
-                stroke="#000000" strokeWidth={isActive ? 1.9 : 1} strokeLinecap="round" />
-          
-          {/* inner horizontal line - positioned to match the arc distance */}
-          <line x1={centerX - innerR} y1={centerY - ring} x2={centerX + innerR} y2={centerY - ring}
-                stroke="#000000" strokeWidth="1.4" strokeLinecap="round" />
-
-          {/* complete inner semicircle with mask to hide area between lines */}
-          <path d={`M ${centerX - innerR} ${centerY} A ${innerR} ${innerR} 0 0 1 ${centerX + innerR} ${centerY} Z`} 
-                fill="none" stroke="#000000" strokeWidth="1" mask={`url(#innerArcMask-${uid})`} />
-
-          {/* center dot */}
+          {/* Red pivot dot */}
           <circle cx={centerX} cy={centerY} r={isActive ? 4 : 3} fill="#dc2626" stroke="#fff" strokeWidth="2" filter="url(#protractorShadow)"/>
 
-          {/* ticks and labels LAST so they stay crisp on top */}
           {generateMarkings()}
-          
         </svg>
-        
-        {/* Rotation handle - positioned on the baseline, left of center */}
+
+        {/* Rotation handle aligned around the pivot horizontally */}
         <div
           className="rotation-handle absolute w-6 h-6 bg-white rounded-full cursor-grab hover:scale-110 border-2 border-emerald-500 shadow-md flex items-center justify-center transition-opacity duration-200"
-          style={{ 
+          style={{
             pointerEvents: 'auto',
-            boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
-            opacity: isHovering ? 1 : 0, // Show on hover like ruler
-            left: `${0.2 * centerX - radiusPx * 0.3}px`,
-            top: `${0.36 * centerY}px`,
+            opacity: isHovering ? 1 : 0,
+            left: `${centerX - radiusPx * 0.08}px`,
+            top: `${centerY + radiusPx * 0.01}px`,
             transform: 'translate(-50%, -50%)',
             zIndex: 20
           }}
@@ -479,15 +366,14 @@ export default function DraggableProtractor({
           <div className="w-2 h-2 bg-emerald-500 rounded-full" />
         </div>
 
-        {/* Resize handle - positioned on the baseline, right of center */}
+        {/* Resize handle symmetric to the other side */}
         <div
           className="resize-handle absolute w-6 h-6 bg-white rounded-full cursor-grab hover:scale-110 border-2 border-amber-500 shadow-md flex items-center justify-center transition-opacity duration-200"
-          style={{ 
+          style={{
             pointerEvents: 'auto',
-            boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
-            opacity: isHovering ? 1 : 0, // Show on hover like ruler
-            left: `${-0.37 * centerX + radiusPx * 0.3}px`,
-            top: `${0.36 * centerY}px`,
+            opacity: isHovering ? 1 : 0,
+            left: `${centerX + radiusPx * 0.08}px`,
+            top: `${centerY + radiusPx * 0.01}px`,
             transform: 'translate(-50%, -50%)',
             zIndex: 15
           }}
@@ -496,7 +382,6 @@ export default function DraggableProtractor({
           <div className="w-2 h-2 bg-amber-500 rounded-full" />
         </div>
       </div>
-      
     </div>
   )
 }
